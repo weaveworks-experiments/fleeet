@@ -1,0 +1,15 @@
+domain: squaremo.dev
+layout: go.kubebuilder.io/v3
+projectName: assemblage
+repo: github.com/squaremo/fleeet/assemblage
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: squaremo.dev
+  group: fleet
+  kind: Assemblage
+  path: github.com/squaremo/fleeet/assemblage/api/v1alpha1
+  version: v1alpha1
+version: "3"
