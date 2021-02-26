@@ -10,17 +10,76 @@ import (
 
 // AssemblageSpec defines the desired state of Assemblage
 type AssemblageSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// +required
+	Syncs []Sync `json:"syncs"`
+}
 
-	// Foo is an example field of Assemblage. Edit assemblage_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+// Sync defines a versioned piece of configuration to be synced, and
+// how to sync it.
+type Sync struct {
+	// Name gives the sync a name so it can be correlated to the status
+	// +required
+	Name string `json:"name"`
+
+	// Source gives the specification for how to get the configuration
+	// to be synced
+	// +required
+	Source SourceSpec `json:"source"`
+
+	// Package defines how to deal with the configuration at the
+	// source, e.g., if it's a kustomization (or YAML files)
+	// +optional
+	// +kubebuilder:default={"kustomize": {"path": "."}}
+	Package *PackageSpec `json:"package,omitempty"`
+}
+
+// SourceSpec gives the details for the source, i.e., from where to
+// get the configuration
+type SourceSpec struct {
+	// +required
+	Git *GitSource `json:"git"`
+}
+
+type GitSource struct {
+	// URL gives the URL for the git repository
+	// +required
+	URL string `json:"url"`
+
+	// Version gives either the revision or tag at which to get the
+	// git repo
+	// +required
+	Version GitVersion `json:"version"`
+}
+
+type GitVersion struct {
+	// +optional
+	Tag string `json:"tag,omitempty"`
+	// +optional
+	Revision string `json:"revision,omitempty"`
+}
+
+// PackageSpec is a union of different kinds of configuration
+type PackageSpec struct {
+	// +optional
+	Kustomize *KustomizeSpec `json:"kustomize,omitempty"`
+}
+
+type KustomizeSpec struct {
+	// Path gives the path within the source to treat as the
+	// Kustomization root.
+	// +optional
+	// +kubebuilder:default=.
+	Path string `json:"path,omitempty"`
 }
 
 // AssemblageStatus defines the observed state of Assemblage
 type AssemblageStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Syncs []SyncStatus `json:"syncs,omitempty"`
+}
+
+type SyncStatus struct {
+	Name string `json:"name"`
+	// TODO: indication of readiness
 }
 
 //+kubebuilder:object:root=true
