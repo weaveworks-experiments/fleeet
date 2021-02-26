@@ -105,7 +105,8 @@ Here are some things that would need to be worked into the design, or worked aro
  - to do rollouts in a fleet, you want fine control over the version of configuration for each
    package you want to roll out, in each cluster. GOTK is intended to be driven the other way: it's
    a soft assumption that packages will tend to depend on a common set of sources, and all packages
-   should be updated whenever their source has a new revision.
+   should be updated whenever their source has a new revision. In a fleet setting, you want the
+   policy to be calculated upstream and enacted downstream; GOTK puts them together.
  - the dependence mechanism is limited:
    - it only operates within a type, e.g., Kustomization->Kustomization but not
      Kustomization->HelmRelease
