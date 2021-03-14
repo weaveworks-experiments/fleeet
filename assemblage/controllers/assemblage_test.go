@@ -114,7 +114,7 @@ var _ = Describe("assemblage controller", func() {
 		// eventually we should see a git repository source and
 		// kustomization created in the same namespace.
 		expectedGitName := types.NamespacedName{
-			Name:      "asm-source-1", // FIXME decide what this is supposed to be
+			Name:      asm.Name + "-0",
 			Namespace: asm.Namespace,
 		}
 		Eventually(func() bool {

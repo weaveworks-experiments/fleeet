@@ -18,7 +18,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	fleetv1alpha1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
+	fleetv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -42,7 +43,10 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "config", "crd", "bases")},
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "config", "crd", "bases"),
+			filepath.Join("testdata", "crds"),
+		},
 		ErrorIfCRDPathMissing: true,
 	}
 
@@ -51,9 +55,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = fleetv1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
+	Expect(sourcev1.AddToScheme(scheme.Scheme)).To(Succeed())
 
+	Expect(fleetv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})

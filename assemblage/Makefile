@@ -11,6 +11,13 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# For testing, some CRDs from other APIs need to be installed. This is
+# where they go.
+TEST_CRDS:=controllers/testdata/crds
+# Version of the source-controller from which to get the GitRepository CRD.
+# Change this if you bump the source-controller/api version in go.mod.
+SOURCE_VER ?= v0.9.0
+
 all: build
 
 ##@ General
@@ -43,11 +50,19 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+${TEST_CRDS}/gitrepositories.yaml:
+	mkdir -p ${TEST_CRDS}
+	curl -s --fail https://raw.githubusercontent.com/fluxcd/source-controller/${SOURCE_VER}/config/crd/bases/source.toolkit.fluxcd.io_gitrepositories.yaml \
+		-o ${TEST_CRDS}/gitrepositories.yaml
+test-deps: ${TEST_CRDS}/gitrepositories.yaml
+.PHONY: test-deps
+
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-test: manifests generate fmt vet ## Run tests.
+test: test-deps manifests generate fmt vet ## Run tests.
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.0/hack/setup-envtest.sh
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
+
 
 ##@ Build
 
