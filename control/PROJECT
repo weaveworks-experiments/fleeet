@@ -1,0 +1,5 @@
+domain: squaremo.dev
+layout: go.kubebuilder.io/v3
+projectName: control
+repo: github.com/squaremo/fleeet/control
+version: "3"
