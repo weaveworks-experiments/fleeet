@@ -51,14 +51,23 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
-${TEST_CRDS}/gitrepositories.yaml:
+${TEST_CRDS}/gitrepositories.yaml: cache/gitrepositories-${SOURCE_VER}.yaml
 	mkdir -p ${TEST_CRDS}
+	cp $^ $@
+
+cache/gitrepositories-${SOURCE_VER}.yaml:
+	mkdir -p cache
 	curl -s --fail https://raw.githubusercontent.com/fluxcd/source-controller/${SOURCE_VER}/config/crd/bases/source.toolkit.fluxcd.io_gitrepositories.yaml \
-		-o ${TEST_CRDS}/gitrepositories.yaml
-${TEST_CRDS}/kustomizations.yaml:
+		-o $@
+
+${TEST_CRDS}/kustomizations.yaml: cache/kustomizations-${KUSTOM_VER}.yaml
 	mkdir -p ${TEST_CRDS}
+	cp $^ $@
+
+cache/kustomizations-${KUSTOM_VER}.yaml:
+	mkdir -p cache
 	curl -s --fail https://raw.githubusercontent.com/fluxcd/kustomize-controller/${KUSTOM_VER}/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml \
-		-o ${TEST_CRDS}/kustomizations.yaml
+		-o $@
 
 test-deps: ${TEST_CRDS}/gitrepositories.yaml ${TEST_CRDS}/kustomizations.yaml
 .PHONY: test-deps
