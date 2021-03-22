@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 
 	fleetv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
@@ -48,6 +49,7 @@ func init() {
 
 	// GitOps toolkit APIs
 	utilruntime.Must(sourcev1.AddToScheme(scheme))
+	utilruntime.Must(kustomv1.AddToScheme(scheme))
 
 	utilruntime.Must(fleetv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme

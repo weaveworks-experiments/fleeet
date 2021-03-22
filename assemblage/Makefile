@@ -17,6 +17,7 @@ TEST_CRDS:=controllers/testdata/crds
 # Version of the source-controller from which to get the GitRepository CRD.
 # Change this if you bump the source-controller/api version in go.mod.
 SOURCE_VER ?= v0.9.0
+KUSTOM_VER ?= v0.9.0
 
 all: build
 
@@ -54,7 +55,12 @@ ${TEST_CRDS}/gitrepositories.yaml:
 	mkdir -p ${TEST_CRDS}
 	curl -s --fail https://raw.githubusercontent.com/fluxcd/source-controller/${SOURCE_VER}/config/crd/bases/source.toolkit.fluxcd.io_gitrepositories.yaml \
 		-o ${TEST_CRDS}/gitrepositories.yaml
-test-deps: ${TEST_CRDS}/gitrepositories.yaml
+${TEST_CRDS}/kustomizations.yaml:
+	mkdir -p ${TEST_CRDS}
+	curl -s --fail https://raw.githubusercontent.com/fluxcd/kustomize-controller/${KUSTOM_VER}/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml \
+		-o ${TEST_CRDS}/kustomizations.yaml
+
+test-deps: ${TEST_CRDS}/gitrepositories.yaml ${TEST_CRDS}/kustomizations.yaml
 .PHONY: test-deps
 
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin

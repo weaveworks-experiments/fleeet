@@ -18,6 +18,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	fleetv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
@@ -56,6 +57,7 @@ var _ = BeforeSuite(func() {
 	Expect(cfg).NotTo(BeNil())
 
 	Expect(sourcev1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(kustomv1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	Expect(fleetv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	//+kubebuilder:scaffold:scheme

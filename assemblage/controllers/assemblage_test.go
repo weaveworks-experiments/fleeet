@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	fleetv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 )
@@ -124,5 +125,18 @@ var _ = Describe("assemblage controller", func() {
 			}
 			return source.Name == expectedGitName.Name
 		}, "5s", "1s").Should(BeTrue())
+
+		expectedKustomizationName := types.NamespacedName{
+			Name:      asm.Name + "-0",
+			Namespace: asm.Namespace,
+		}
+		var kustom kustomv1.Kustomization
+		Eventually(func() bool {
+			if err := k8sClient.Get(context.Background(), expectedKustomizationName, &kustom); err != nil {
+				return false
+			}
+			return kustom.Name == expectedGitName.Name
+		}, "5s", "1s").Should(BeTrue())
+		Expect(kustom.Spec.Path).To(Equal(asm.Spec.Syncs[0].Package.Kustomize.Path))
 	})
 })

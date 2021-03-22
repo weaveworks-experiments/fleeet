@@ -15,6 +15,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	fleetv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 )
@@ -60,9 +61,29 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}); err != nil {
 			return ctrl.Result{}, err
 		}
-		log.Info("creating source git repository", "name", source.Name)
+		log.Info("creating/updating source git repository", "name", source.Name)
 
-		// TODO Secondly, a Kustomization
+		// Secondly, a Kustomization
+		switch {
+		case sync.Package.Kustomize != nil:
+			var kustom kustomv1.Kustomization
+			kustom.Namespace = asm.Namespace
+			kustom.Name = fmt.Sprintf("%s-%d", asm.Name, i)
+
+			if _, err := ctrl.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
+				spec, err := kustomizationSpecFromPackage(sync.Package, source.Name)
+				if err != nil {
+					return err
+				}
+				kustom.Spec = spec
+				return nil
+			}); err != nil {
+				return ctrl.Result{}, err
+			}
+			log.Info("creating/updating kustomization", "name", kustom.Name)
+		default:
+			log.Info("no sync package present", "sync", i)
+		}
 	}
 
 	// TODO For each GitOps Toolkit sync object, collect the status
@@ -87,6 +108,16 @@ func gitRepositorySpecFromSync(sync *fleetv1.Sync) (sourcev1.GitRepositorySpec, 
 	dstSpec.Reference = &ref
 
 	return dstSpec, nil
+}
+
+func kustomizationSpecFromPackage(pkg *fleetv1.PackageSpec, sourceName string) (kustomv1.KustomizationSpec, error) {
+	var spec kustomv1.KustomizationSpec
+	spec.SourceRef = kustomv1.CrossNamespaceSourceReference{
+		Kind: sourcev1.GitRepositoryKind,
+		Name: sourceName,
+	}
+	spec.Path = pkg.Kustomize.Path
+	return spec, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
