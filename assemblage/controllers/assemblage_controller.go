@@ -101,6 +101,7 @@ func gitRepositorySpecFromSync(sync *fleetv1.Sync) (sourcev1.GitRepositorySpec, 
 	if tag := srcSpec.Version.Tag; tag != "" {
 		ref.Tag = tag
 	} else if rev := srcSpec.Version.Revision; rev != "" {
+		ref.Branch = "main" // FIXME a hack to make it work with my repos, see https://github.com/fluxcd/source-controller/issues/315
 		ref.Commit = rev
 	} else {
 		return dstSpec, fmt.Errorf("neither tag nor revision given in git source spec")
