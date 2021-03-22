@@ -35,6 +35,43 @@ Downsides:
  - lots of ways of doing things = complexity for the user
  - sync or runtime dependence is not supported
 
+## ArgoCD ApplicationSet
+
+The [ApplicationSet controller](https://argocd-applicationset.readthedocs.io/en/stable/) is an Argo
+labs project which addresses some fleet concerns. The design centre is a mechanism for generating
+Application definitions from a set of generators. Each generators yields either a list of parameter
+replacements (e.g., cluster names), or Application templates (e.g., from directories in a git
+repository), and the controller effectively calculates the product `parameters x templates` to
+produce Application definitions.
+
+This is an elegant mechanism, and I think easy to grasp as a user. It is an admin-centric model,
+because the entry point is an object which assumes a view of all clusters and all configurations.
+
+Advantages:
+
+ - it is obvious to the user what is happening with the parameter substitution, because it's all in
+   one place
+ - it feels like a natural extension to the Application abstraction
+
+Disadvantages:
+
+ - the result is multiplied out on the management cluster (vs the law of parsimony).
+ - since the aggregate object gives an intension for both modules (units to be synced) and clusters,
+   neither of these are represented individually -- you don't have a view of a module as rolled out,
+   or all things on a cluster (though you can construct at least the latter)
+
+In principle, you could replicate the mechanism for use with GOTK, and it would have both the
+advantages and the flaws. It might feel a little less like a natural extension to the syncs in GOTK,
+because they come in two disjoint varieties (Kustomizations and HelmReleases) which don't
+interoperate.
+
+What would it look like to try and reproduce the advantages, while mitigating the disadvantages?
+Keeping separate units of sync (modules) and combining into an aggregate for a particular cluster
+mitigates both the disadvantages, since it keeps the number of objects down to O(clusters), and lets
+you see the rollout status of a module. To retain the transparency of interpolation advantage,
+parameters need to be specified at the point of access, i.e., modules, and work independently (no
+interaction with things specified elsewhere).
+
 ## Starling
 
 [Starling][starling] is my testing ground for some ideas around fleets.
