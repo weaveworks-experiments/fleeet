@@ -11,6 +11,11 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# For testing, some CRDs from other APIs need to be installed. This is
+# where they go.
+TEST_CRDS:=controllers/testdata/crds
+CAPI_VER=master
+
 all: build
 
 ##@ General
@@ -43,8 +48,20 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+${TEST_CRDS}/clusters.yaml: cache/clusters-${CAPI_VER}.yaml
+	mkdir -p ${TEST_CRDS}
+	cp $^ $@
+
+cache/clusters-${CAPI_VER}.yaml:
+	mkdir -p cache
+	curl -s --fail https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/${CAPI_VER}/config/crd/bases/cluster.x-k8s.io_clusters.yaml \
+		-o $@
+
+test-deps: ${TEST_CRDS}/clusters.yaml
+.PHONY: test-deps
+
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
-test: manifests generate fmt vet ## Run tests.
+test: test-deps manifests generate fmt vet ## Run tests.
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.7.0/hack/setup-envtest.sh
 	source ${ENVTEST_ASSETS_DIR}/setup-envtest.sh; fetch_envtest_tools $(ENVTEST_ASSETS_DIR); setup_envtest_env $(ENVTEST_ASSETS_DIR); go test ./... -coverprofile cover.out
