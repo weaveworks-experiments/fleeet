@@ -6,18 +6,28 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+)
 
 // RemoteAssemblageSpec defines the desired state of RemoteAssemblage
 type RemoteAssemblageSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// KubeconfigRef refers to a secret with a kubeconfig for the
+	// remote cluster.
+	// +required
+	KubeconfigRef LocalKubeconfigReference `json:"kubeconfigRef"`
 
-	// Foo is an example field of RemoteAssemblage. Edit remoteassemblage_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Assemblage gives the specification for the assemblage to create
+	// downstream. It will be created with the same name as this
+	// object.
+	// +required
+	Assemblage asmv1.AssemblageSpec `json:"assemblage"`
+}
+
+type LocalKubeconfigReference struct {
+	// Name gives the name of the secret containing a kubeconfig.
+	// +required
+	Name string `json:"name"`
 }
 
 // RemoteAssemblageStatus defines the observed state of RemoteAssemblage

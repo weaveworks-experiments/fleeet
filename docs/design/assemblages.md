@@ -13,7 +13,7 @@ The responsibilities of an Assemblage are:
  - act as a communication channel between control plane and worker clusters
  - define a self-contained, consistent, exactly-versioned composition of configuration
 
-These things are ideally done in the layer _above_ Assemblages:
+These things are ideally done in the layers _above_ Assemblages:
 
  - calculating which pieces of configuration go to which clusters
  - figuring out the exact versions for each piece
@@ -31,7 +31,7 @@ objects, and it's not clear that deduplicating assemblages is worth the complexi
 
 **How to deal with secrets**
 
-An upstream assemblage does not come with secrets; it specifies how to obtain the secrets.
+A remote assemblage does not come with secrets; it specifies how to obtain the secrets.
 
 There will always be some groundwork on a downstream cluster to make secrets readable, whether it's
 supplying a GPG key or assigning IAM roles.
