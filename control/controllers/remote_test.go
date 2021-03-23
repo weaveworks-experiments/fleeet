@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd/api"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/util/kubeconfig"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 
@@ -27,13 +28,15 @@ import (
 )
 
 const (
-	timeout  = 20 * time.Second
+	timeout  = 5 * time.Second
 	interval = time.Second
 )
 
 var _ = Describe("remote assemblages", func() {
 
 	var (
+		manager             ctrl.Manager
+		stopManager         func()
 		downstreamK8sClient client.Client
 		downstreamEnv       *envtest.Environment
 		cluster             *clusterv1.Cluster
@@ -41,10 +44,34 @@ var _ = Describe("remote assemblages", func() {
 	)
 
 	BeforeEach(func() {
+		// downstream "cluster" test env
 		downstreamEnv, cluster, clusterSecret, downstreamK8sClient = makeDownstreamEnv()
+
+		By("starting a controller manager")
+		var err error
+		manager, err = ctrl.NewManager(cfg, ctrl.Options{
+			Scheme: scheme.Scheme,
+		})
+		Expect(err).ToNot(HaveOccurred())
+
+		remoteReconciler := &RemoteAssemblageReconciler{
+			Client: manager.GetClient(),
+			Log:    ctrl.Log.WithName("controllers").WithName("RemoteAssemblage"),
+			Scheme: manager.GetScheme(),
+		}
+		Expect(remoteReconciler.SetupWithManager(manager)).To(Succeed())
+
+		var ctx context.Context
+		ctx, stopManager = context.WithCancel(ctrl.SetupSignalHandler())
+		go func() {
+			defer GinkgoRecover()
+			Expect(manager.Start(ctx)).To(Succeed())
+		}()
 	})
 
 	AfterEach(func() {
+		stopManager()
+
 		By("removing cluster records")
 		Expect(k8sClient.Delete(context.Background(), cluster)).To(Succeed())
 		Expect(k8sClient.Delete(context.Background(), clusterSecret)).To(Succeed())

@@ -19,7 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	fleetv1alpha1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
 	"github.com/squaremo/fleeet/control/controllers"
 	//+kubebuilder:scaffold:imports
 )
@@ -31,8 +32,9 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(asmv1.AddToScheme(scheme))
 
-	utilruntime.Must(fleetv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(fleetv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
