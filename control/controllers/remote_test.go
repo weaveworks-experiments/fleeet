@@ -88,7 +88,17 @@ var _ = Describe("remote assemblages", func() {
 				Spec: fleetv1.RemoteAssemblageSpec{
 					KubeconfigRef: fleetv1.LocalKubeconfigReference{Name: clusterSecret.Name},
 					Assemblage: asmv1.AssemblageSpec{
-						Syncs: []asmv1.Sync{},
+						Syncs: []asmv1.Sync{
+							{
+								Name: "app",
+								Source: asmv1.SourceSpec{
+									Git: &asmv1.GitSource{
+										URL:     "https://github.com/cuttlefacts/cuttlefacts-app",
+										Version: asmv1.GitVersion{Tag: "v0.3.0"},
+									},
+								},
+							},
+						},
 					},
 				},
 			}
@@ -96,17 +106,15 @@ var _ = Describe("remote assemblages", func() {
 			proxy.Namespace = "default"
 			Expect(k8sClient.Create(context.Background(), &proxy)).To(Succeed())
 
+			var asm asmv1.Assemblage
 			Eventually(func() bool {
-				var asm asmv1.Assemblage
 				err := downstreamK8sClient.Get(context.Background(), types.NamespacedName{
 					Name:      "test-proxy-sync",
 					Namespace: "default",
 				}, &asm)
-				if err != nil {
-					return false
-				}
-				return true // TODO more sophisticated
+				return err == nil
 			}, timeout, interval).Should(BeTrue())
+			Expect(asm.Spec.Syncs).To(Equal(proxy.Spec.Assemblage.Syncs))
 		})
 	})
 })
