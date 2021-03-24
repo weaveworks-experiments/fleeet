@@ -20,7 +20,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	fleetv1alpha1 "github.com/squaremo/fleeet/control/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -61,6 +63,9 @@ var _ = BeforeSuite(func() {
 
 	err = fleetv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	err = fleetv1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
 	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})

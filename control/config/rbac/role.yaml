@@ -9,6 +9,32 @@ rules:
 - apiGroups:
   - fleet.squaremo.dev
   resources:
+  - modules
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - modules/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - modules/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
   - remoteassemblages
   verbs:
   - create
