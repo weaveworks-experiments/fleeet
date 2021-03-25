@@ -6,24 +6,25 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+)
 
 // ModuleSpec defines the desired state of Module
 type ModuleSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Selector gives the criteria for assigning this module to an
+	// cluster. If missing, no clusters are selected. If present and
+	// empty, all clusters are selected.
+	// +optional
+	Selector *metav1.LabelSelector `json:"selector"`
 
-	// Foo is an example field of Module. Edit module_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// Sync gives the configuration to sync on assigned clusters.
+	// +required
+	Sync asmv1.Sync `json:"sync"`
 }
 
 // ModuleStatus defines the observed state of Module
 type ModuleStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 }
 
 //+kubebuilder:object:root=true
