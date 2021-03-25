@@ -13,14 +13,33 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	//	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	ctrl "sigs.k8s.io/controller-runtime"
 	//	"sigs.k8s.io/controller-runtime/pkg/client"
-	//	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
-	//	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
 )
+
+// makeSync is a convenience for testing, which creates a sync with
+// the given name, git URL, and version tag.
+func makeSync(name, url, tag string) asmv1.Sync {
+	return asmv1.Sync{
+		Name: name,
+		Source: asmv1.SourceSpec{
+			Git: &asmv1.GitSource{
+				URL: url,
+				Version: asmv1.GitVersion{
+					Tag: tag,
+				},
+			},
+		},
+		// leave package to default
+	}
+}
 
 var _ = Describe("modules", func() {
 	var (
@@ -73,12 +92,29 @@ var _ = Describe("modules", func() {
 			Expect(k8sClient.Delete(context.Background(), cluster)).To(Succeed())
 		})
 
-		It("created the cluster", func() {
-			var c clusterv1.Cluster
-			Expect(k8sClient.Get(context.Background(), types.NamespacedName{
-				Name:      "downstream",
-				Namespace: "default",
-			}, &c)).To(Succeed())
+		Context("matching all clusters", func() {
+			It("creates a remote assemblage", func() {
+				module := &fleetv1.Module{
+					Spec: fleetv1.ModuleSpec{
+						Selector: &metav1.LabelSelector{}, // all clusters
+						Sync:     makeSync("app", "https://github.com/cuttlefacts/app", "v0.3.4"),
+					},
+				}
+				module.Name = "testmod"
+				module.Namespace = "default"
+				Expect(k8sClient.Create(context.Background(), module)).To(Succeed())
+
+				var asm fleetv1.RemoteAssemblage
+				Eventually(func() bool {
+					err := k8sClient.Get(context.TODO(), types.NamespacedName{
+						Namespace: module.Namespace,
+						Name:      cluster.Name, // FIXME what is the name?
+					}, &asm)
+					return err == nil
+				}, "5s", "1s").Should(BeTrue())
+
+				// TODO now look in the assemblage for the module and its version
+			})
 		})
 	})
 })

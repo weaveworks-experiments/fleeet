@@ -10,6 +10,8 @@ import (
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 )
 
+const KindModule = "Module"
+
 // ModuleSpec defines the desired state of Module
 type ModuleSpec struct {
 	// Selector gives the criteria for assigning this module to an

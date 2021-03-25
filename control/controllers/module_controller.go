@@ -6,13 +6,23 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	fleetv1alpha1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	//	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
 )
 
 // ModuleReconciler reconciles a Module object
@@ -22,30 +32,185 @@ type ModuleReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+const (
+	assemblageOwnerKey = "ownerModule"
+)
+
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Module object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.7.0/pkg/reconcile
 func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = r.Log.WithValues("module", req.NamespacedName)
+	log := r.Log.WithValues("module", req.NamespacedName)
 
-	// your logic here
+	var mod fleetv1.Module
+	if err := r.Get(ctx, req.NamespacedName, &mod); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// --- update this module's status ---
+
+	// Find all assemblages that include this module
+	var asms fleetv1.RemoteAssemblageList
+	if err := r.List(ctx, &asms, client.InNamespace(req.Namespace), client.MatchingFields{assemblageOwnerKey: req.Name}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
+	}
+
+	// --- create/update/delete remote assemblages
+
+	// Make sure there is a remote assemblage which includes this
+	// module, for every cluster that matches the selector.
+
+	var clusters clusterv1.ClusterList
+	// `LabelSelectorAsSelector` correctly handles nil and empty
+	// selector values by selecting nothing and everything,
+	// respectively.
+	selector, err := metav1.LabelSelectorAsSelector(mod.Spec.Selector)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("could not make selector from %v: %w", mod.Spec.Selector, err)
+	}
+	if err := r.List(ctx, &clusters, &client.ListOptions{
+		LabelSelector: selector,
+	}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to list selected clusters: %w", err)
+	}
+
+	// TODO go through the assemblages to figure out:
+	// - which need the module included;
+	// - which need the module removed;
+	// - whether there's any that need to be created
+
+	// Keep track of the assemblages which did require this module;
+	// afterwards, this will be helpful to determine which assemblages
+	// need the module removed.
+	requiredAsm := map[string]struct{}{}
+	for _, cluster := range clusters.Items {
+		requiredAsm[cluster.GetName()] = struct{}{}
+
+		var asm fleetv1.RemoteAssemblage
+		asm.Namespace = cluster.GetNamespace()
+		asm.Name = cluster.GetName()
+
+		// This loop makes sure every cluster that matches the
+		// selector has a remote assemblage with the latest definition
+		// of the module, by either updating an existing assemblage or
+		// creating one.
+		if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, &asm, func() error {
+			if err := controllerutil.SetOwnerReference(&mod, &asm, r.Scheme); err != nil {
+				return err
+			}
+			// if this module is to be found in the syncs, make sure
+			// it's the up to date definition
+			syncs := asm.Spec.Assemblage.Syncs
+			for i, sync := range syncs {
+				if sync.Name == mod.Name {
+					syncs[i] = mod.Spec.Sync
+					return nil
+				}
+			}
+			// not there -- add this module
+			asm.Spec.Assemblage.Syncs = append(syncs, mod.Spec.Sync)
+			return nil
+		}); err != nil {
+			log.Error(err, "updating remote assemblages", "assemblage", asm.Name)
+		}
+	}
+
+	// This loop removes the module from any assemblage for a cluster
+	// that wasn't selected. (Remember, these assemblages were
+	// selected because they were owned by this module, implying that
+	// at some point the module was assigned to the cluster)
+	for _, asm := range asms.Items {
+		if _, ok := requiredAsm[asm.GetName()]; !ok {
+			syncs := asm.Spec.Assemblage.Syncs
+			for i, sync := range syncs {
+				if sync.Name == mod.Name {
+					asm.Spec.Assemblage.Syncs = append(syncs[:i], syncs[i+1:]...)
+					if err := r.Update(ctx, &asm); err != nil {
+						log.Error(err, "removing module from remote assemblage", "assemblage", asm.Name)
+					}
+					// FIXME: can this `break` from the loop at this point?
+				}
+			}
+		}
+	}
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
+
+	// This sets up an index on the Module owners of RemoteAssemblage
+	// objects. This complements the Watch on assemblage owners,
+	// below: that enqueues all the modules related to an assemblage
+	// that has changed, while this helps get the assemblages related
+	// to a module.
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &fleetv1.RemoteAssemblage{}, assemblageOwnerKey, func(obj client.Object) []string {
+		asm := obj.(*fleetv1.RemoteAssemblage)
+		var moduleOwners []string
+		for _, owner := range asm.GetOwnerReferences() {
+			// FIXME: make this more reliable? What are the
+			// consequences of getting another API's Module mixed in
+			// here?
+			if owner.Kind == fleetv1.KindModule {
+				moduleOwners = append(moduleOwners, owner.Name)
+			}
+		}
+		return moduleOwners
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&fleetv1alpha1.Module{}).
+		For(&fleetv1.Module{}).
+		// Enqueue a Module any time a RemoteAssemblage that records
+		// it as an owner is changed. This cannot use "Owns" because
+		// more than one module can be an owner of a RemoteAssemblage
+		// (and none will be the controller owner).
+		Watches(
+			&source.Kind{Type: &fleetv1.RemoteAssemblage{}},
+			&handler.EnqueueRequestForOwner{
+				OwnerType:    &fleetv1.Module{},
+				IsController: false,
+			}).
+		// Enqueue all the Module objects that pertain to a
+		// particular cluster
+		Watches(
+			&source.Kind{Type: &clusterv1.Cluster{}},
+			handler.EnqueueRequestsFromMapFunc(r.modulesForCluster)).
 		Complete(r)
+}
+
+func (r *ModuleReconciler) modulesForCluster(cluster client.Object) []reconcile.Request {
+	ctx := context.Background()
+	var modules fleetv1.ModuleList
+	if err := r.List(ctx, &modules, client.InNamespace(cluster.GetNamespace())); err != nil {
+		r.Log.Error(err, "getting list of modules")
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, mod := range modules.Items {
+		if mod.Spec.Selector == nil {
+			continue
+		}
+		name := types.NamespacedName{
+			Name:      mod.Name,
+			Namespace: mod.Namespace,
+		}
+		selector, err := metav1.LabelSelectorAsSelector(mod.Spec.Selector)
+		if err != nil {
+			r.Log.Error(err, "making selector for module", "module", name)
+			continue
+		}
+		if selector.Matches(labels.Set(cluster.GetLabels())) {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: name,
+			})
+		}
+	}
+	return requests
 }
