@@ -37,6 +37,7 @@ var _ = Describe("remote assemblages", func() {
 	var (
 		manager             ctrl.Manager
 		stopManager         func()
+		managerDone         chan struct{}
 		downstreamK8sClient client.Client
 		downstreamEnv       *envtest.Environment
 		cluster             *clusterv1.Cluster
@@ -62,10 +63,12 @@ var _ = Describe("remote assemblages", func() {
 		Expect(remoteReconciler.SetupWithManager(manager)).To(Succeed())
 
 		var ctx context.Context
-		ctx, stopManager = context.WithCancel(ctrl.SetupSignalHandler())
+		ctx, stopManager = context.WithCancel(signalHandler)
+		managerDone = make(chan struct{})
 		go func() {
 			defer GinkgoRecover()
 			Expect(manager.Start(ctx)).To(Succeed())
+			close(managerDone)
 		}()
 	})
 
@@ -79,6 +82,7 @@ var _ = Describe("remote assemblages", func() {
 		By("tearing down the test environment")
 		err := downstreamEnv.Stop()
 		Expect(err).ToNot(HaveOccurred())
+		<-managerDone
 	})
 
 	Context("proxying", func() {
