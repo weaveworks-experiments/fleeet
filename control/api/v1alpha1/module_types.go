@@ -18,7 +18,7 @@ type ModuleSpec struct {
 	// cluster. If missing, no clusters are selected. If present and
 	// empty, all clusters are selected.
 	// +optional
-	Selector *metav1.LabelSelector `json:"selector"`
+	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 
 	// Sync gives the configuration to sync on assigned clusters.
 	// +required

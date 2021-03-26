@@ -5,6 +5,7 @@ Copyright 2021 Michael Bridgen <mikeb@squaremobius.net>.
 package controllers
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/envtest/printer"
@@ -32,6 +34,7 @@ import (
 var cfg *rest.Config
 var k8sClient client.Client
 var testEnv *envtest.Environment
+var signalHandler context.Context
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -72,6 +75,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	signalHandler = ctrl.SetupSignalHandler()
 }, 60)
 
 var _ = AfterSuite(func() {
