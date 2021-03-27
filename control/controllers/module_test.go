@@ -13,6 +13,7 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	//	corev1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -26,9 +27,8 @@ import (
 
 // makeSync is a convenience for testing, which creates a sync with
 // the given name, git URL, and version tag.
-func makeSync(name, url, tag string) asmv1.Sync {
+func makeSync(url, tag string) asmv1.Sync {
 	return asmv1.Sync{
-		Name: name,
 		Source: asmv1.SourceSpec{
 			Git: &asmv1.GitSource{
 				URL: url,
@@ -81,7 +81,8 @@ var _ = Describe("modules", func() {
 	Context("compiles remote assemblages", func() {
 
 		var (
-			clusters = []string{
+			namespace *corev1.Namespace
+			clusters  = []string{
 				"cluster-1",
 				"cluster-2",
 				"cluster-3",
@@ -89,19 +90,21 @@ var _ = Describe("modules", func() {
 		)
 
 		BeforeEach(func() {
+			namespace = &corev1.Namespace{}
+			namespace.Name = "ns-" + randString(5)
+			Expect(k8sClient.Create(context.TODO(), namespace)).To(Succeed())
+
 			for _, name := range clusters {
 				cluster := &clusterv1.Cluster{}
 				cluster.Name = name
-				cluster.Namespace = "default"
+				cluster.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.Background(), cluster)).To(Succeed())
 			}
 			// TODO details of the cluster
 		})
 
 		AfterEach(func() {
-			Expect(k8sClient.DeleteAllOf(context.TODO(), &clusterv1.Cluster{}, client.InNamespace("default"))).To(Succeed())
-			Expect(k8sClient.DeleteAllOf(context.TODO(), &fleetv1.Module{}, client.InNamespace("default"))).To(Succeed())
-			Expect(k8sClient.DeleteAllOf(context.TODO(), &fleetv1.RemoteAssemblage{}, client.InNamespace("default"))).To(Succeed())
+			Expect(k8sClient.Delete(context.TODO(), namespace)).To(Succeed())
 		})
 
 		Context("matching clusters", func() {
@@ -114,50 +117,104 @@ var _ = Describe("modules", func() {
 				nomatchModule := &fleetv1.Module{
 					Spec: fleetv1.ModuleSpec{
 						// leave the selector out to indicate "match nothing"
-						Sync: makeSync("app", "https://github.com/cuttlefacts/cuttlefacts-platform", "v0.1.2"),
+						Sync: makeSync("https://github.com/cuttlefacts/cuttlefacts-platform", "v0.1.2"),
 					},
 				}
 				nomatchModule.Name = "nomatch"
-				nomatchModule.Namespace = "default"
+				nomatchModule.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.Background(), nomatchModule)).To(Succeed())
 
 				matchModule := &fleetv1.Module{
 					Spec: fleetv1.ModuleSpec{
 						Selector: &metav1.LabelSelector{}, // all clusters
-						Sync:     makeSync("app", "https://github.com/cuttlefacts/app", "v0.3.4"),
+						Sync:     makeSync("https://github.com/cuttlefacts/app", "v0.3.4"),
 					},
 				}
 				matchModule.Name = "matches"
-				matchModule.Namespace = "default"
+				matchModule.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.Background(), matchModule)).To(Succeed())
 
 				var asms fleetv1.RemoteAssemblageList
 				Eventually(func() bool {
-					err := k8sClient.List(context.TODO(), &asms, client.InNamespace("default"))
+					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
 					return err == nil && len(asms.Items) == len(clusters)
 				}, "5s", "1s").Should(BeTrue())
 
 				for _, asm := range asms.Items {
-					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(matchModule.Spec.Sync))
-					Expect(asm.Spec.Assemblage.Syncs).NotTo(ContainElement(nomatchModule.Spec.Sync))
+					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+						Name: "matches",
+						Sync: matchModule.Spec.Sync,
+					}))
+					Expect(asm.Spec.Assemblage.Syncs).NotTo(ContainElement(asmv1.NamedSync{
+						Name: "nomatch",
+						Sync: nomatchModule.Spec.Sync,
+					}))
 				}
 
 				// add a cluster and check that it gets matched
 				newCluster := clusterv1.Cluster{}
 				newCluster.Name = "newcluster"
-				newCluster.Namespace = "default"
+				newCluster.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.TODO(), &newCluster)).To(Succeed())
 
 				var newAsm fleetv1.RemoteAssemblage
 				Eventually(func() bool {
 					err := k8sClient.Get(context.TODO(), types.NamespacedName{
-						Namespace: "default",
+						Namespace: namespace.Name,
 						Name:      newCluster.Name,
 					}, &newAsm)
 					return err == nil
 				}, "5s", "1s").Should(BeTrue())
-				Expect(newAsm.Spec.Assemblage.Syncs).To(ContainElement(matchModule.Spec.Sync))
-				Expect(newAsm.Spec.Assemblage.Syncs).NotTo(ContainElement(nomatchModule.Spec.Sync))
+				Expect(newAsm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+					Name: matchModule.Name,
+					Sync: matchModule.Spec.Sync,
+				}))
+				Expect(newAsm.Spec.Assemblage.Syncs).NotTo(ContainElement(asmv1.NamedSync{
+					Name: nomatchModule.Name,
+					Sync: nomatchModule.Spec.Sync,
+				}))
+			})
+		})
+
+		Context("module updates", func() {
+			It("updates remote assemblages with new version", func() {
+				module := &fleetv1.Module{
+					Spec: fleetv1.ModuleSpec{
+						Selector: &metav1.LabelSelector{}, // all clusters
+						Sync:     makeSync("https://github.com/cuttlefacts/app", "v0.3.4"),
+					},
+				}
+				module.Name = "matches"
+				module.Namespace = namespace.Name
+				Expect(k8sClient.Create(context.TODO(), module)).To(Succeed())
+
+				var asms fleetv1.RemoteAssemblageList
+				Eventually(func() bool {
+					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
+					return err == nil && len(asms.Items) == len(clusters)
+				}, "5s", "1s").Should(BeTrue())
+				for _, asm := range asms.Items {
+					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+						Name: module.Name,
+						Sync: module.Spec.Sync,
+					}))
+				}
+
+				newTag := "v0.3.5"
+				module.Spec.Sync.Source.Git.Version.Tag = newTag
+				Expect(k8sClient.Update(context.TODO(), module)).To(Succeed())
+				Eventually(func() bool {
+					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
+					if err != nil {
+						return false
+					}
+					for _, asm := range asms.Items {
+						if asm.Spec.Assemblage.Syncs[0].Source.Git.Version.Tag != newTag {
+							return false
+						}
+					}
+					return true
+				}, "5s", "1s").Should(BeTrue())
 			})
 		})
 	})

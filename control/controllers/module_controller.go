@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	//	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
 )
 
@@ -89,7 +89,7 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	for _, cluster := range clusters.Items {
 		requiredAsm[cluster.GetName()] = struct{}{}
 
-		var asm fleetv1.RemoteAssemblage
+		asm := &fleetv1.RemoteAssemblage{}
 		asm.Namespace = cluster.GetNamespace()
 		asm.Name = cluster.GetName()
 
@@ -97,8 +97,8 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		// selector has a remote assemblage with the latest definition
 		// of the module, by either updating an existing assemblage or
 		// creating one.
-		if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, &asm, func() error {
-			if err := controllerutil.SetOwnerReference(&mod, &asm, r.Scheme); err != nil {
+		if op, err := controllerutil.CreateOrUpdate(ctx, r.Client, asm, func() error {
+			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
 				return err
 			}
 			// if this module is to be found in the syncs, make sure
@@ -106,15 +106,23 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			syncs := asm.Spec.Assemblage.Syncs
 			for i, sync := range syncs {
 				if sync.Name == mod.Name {
-					syncs[i] = mod.Spec.Sync
+					// NB: CreateOrUpdate will avoid the update if the mutated object
+					// is deep-equal to the original. That helps this process reach a
+					// fixed point.
+					syncs[i].Sync = mod.Spec.Sync
 					return nil
 				}
 			}
 			// not there -- add this module
-			asm.Spec.Assemblage.Syncs = append(syncs, mod.Spec.Sync)
+			asm.Spec.Assemblage.Syncs = append(syncs, asmv1.NamedSync{
+				Name: mod.Name,
+				Sync: mod.Spec.Sync,
+			})
 			return nil
 		}); err != nil {
 			log.Error(err, "updating remote assemblages", "assemblage", asm.Name)
+		} else {
+			log.V(1).Info("updated assemblage", "assemblage", asm.Name, "operation", op)
 		}
 	}
 
@@ -166,6 +174,7 @@ func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.Module{}).
+
 		// Enqueue a Module any time a RemoteAssemblage that records
 		// it as an owner is changed. This cannot use "Owns" because
 		// more than one module can be an owner of a RemoteAssemblage
@@ -176,6 +185,7 @@ func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				OwnerType:    &fleetv1.Module{},
 				IsController: false,
 			}).
+
 		// Enqueue all the Module objects that pertain to a
 		// particular cluster
 		Watches(

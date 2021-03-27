@@ -38,8 +38,6 @@ spec:
             properties:
               syncs:
                 items:
-                  description: Sync defines a versioned piece of configuration to
-                    be synced, and how to sync it.
                   properties:
                     name:
                       description: Name gives the sync a name so it can be correlated

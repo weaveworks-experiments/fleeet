@@ -85,10 +85,6 @@ spec:
               sync:
                 description: Sync gives the configuration to sync on assigned clusters.
                 properties:
-                  name:
-                    description: Name gives the sync a name so it can be correlated
-                      to the status
-                    type: string
                   package:
                     default:
                       kustomize:
@@ -131,7 +127,6 @@ spec:
                     - git
                     type: object
                 required:
-                - name
                 - source
                 type: object
             required:
