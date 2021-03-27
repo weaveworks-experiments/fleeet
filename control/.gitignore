@@ -8,6 +8,11 @@
 bin
 testbin/*
 
+# cache for versioned, downloaded files
+cache/*
+# these get downloaded but are put here for convenience
+controllers/testdata/crds/*
+
 # Test binary, build with `go test -c`
 *.test
 
