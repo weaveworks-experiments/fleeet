@@ -11,16 +11,19 @@ import (
 // AssemblageSpec defines the desired state of Assemblage
 type AssemblageSpec struct {
 	// +required
-	Syncs []Sync `json:"syncs"`
+	Syncs []NamedSync `json:"syncs"`
+}
+
+type NamedSync struct {
+	// Name gives the sync a name so it can be correlated to the status
+	// +required
+	Name string `json:"name"`
+	Sync `json:",inline"`
 }
 
 // Sync defines a versioned piece of configuration to be synced, and
 // how to sync it.
 type Sync struct {
-	// Name gives the sync a name so it can be correlated to the status
-	// +required
-	Name string `json:"name"`
-
 	// Source gives the specification for how to get the configuration
 	// to be synced
 	// +required

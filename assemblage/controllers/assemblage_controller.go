@@ -51,7 +51,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		source.Name = fmt.Sprintf("%s-%d", asm.Name, i)
 
 		if _, err := ctrl.CreateOrUpdate(ctx, r.Client, &source, func() error {
-			spec, err := gitRepositorySpecFromSync(&sync)
+			spec, err := gitRepositorySpecFromSync(&sync.Sync)
 			if err != nil {
 				return err
 			}

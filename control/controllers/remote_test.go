@@ -92,13 +92,15 @@ var _ = Describe("remote assemblages", func() {
 				Spec: fleetv1.RemoteAssemblageSpec{
 					KubeconfigRef: fleetv1.LocalKubeconfigReference{Name: clusterSecret.Name},
 					Assemblage: asmv1.AssemblageSpec{
-						Syncs: []asmv1.Sync{
+						Syncs: []asmv1.NamedSync{
 							{
 								Name: "app",
-								Source: asmv1.SourceSpec{
-									Git: &asmv1.GitSource{
-										URL:     "https://github.com/cuttlefacts/cuttlefacts-app",
-										Version: asmv1.GitVersion{Tag: "v0.3.0"},
+								Sync: asmv1.Sync{
+									Source: asmv1.SourceSpec{
+										Git: &asmv1.GitSource{
+											URL:     "https://github.com/cuttlefacts/cuttlefacts-app",
+											Version: asmv1.GitVersion{Tag: "v0.3.0"},
+										},
 									},
 								},
 							},

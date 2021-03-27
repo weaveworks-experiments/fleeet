@@ -71,7 +71,7 @@ var _ = Describe("assemblage controller", func() {
 	It("can be created", func() {
 		asm := fleetv1.Assemblage{
 			Spec: fleetv1.AssemblageSpec{
-				Syncs: []fleetv1.Sync{},
+				Syncs: []fleetv1.NamedSync{},
 			},
 		}
 		asm.Name = "asm"
@@ -86,19 +86,22 @@ var _ = Describe("assemblage controller", func() {
 	It("creates GOTK objects", func() {
 		asm := fleetv1.Assemblage{
 			Spec: fleetv1.AssemblageSpec{
-				Syncs: []fleetv1.Sync{
+				Syncs: []fleetv1.NamedSync{
 					{
-						Source: fleetv1.SourceSpec{
-							Git: &fleetv1.GitSource{
-								URL: "https://github.com/cuttlefacts-app",
-								Version: fleetv1.GitVersion{
-									Revision: "bd6ef78",
+						Name: "app",
+						Sync: fleetv1.Sync{
+							Source: fleetv1.SourceSpec{
+								Git: &fleetv1.GitSource{
+									URL: "https://github.com/cuttlefacts-app",
+									Version: fleetv1.GitVersion{
+										Revision: "bd6ef78",
+									},
 								},
 							},
-						},
-						Package: &fleetv1.PackageSpec{
-							Kustomize: &fleetv1.KustomizeSpec{
-								Path: "deploy",
+							Package: &fleetv1.PackageSpec{
+								Kustomize: &fleetv1.KustomizeSpec{
+									Path: "deploy",
+								},
 							},
 						},
 					},
