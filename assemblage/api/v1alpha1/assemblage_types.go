@@ -80,9 +80,23 @@ type AssemblageStatus struct {
 	Syncs []SyncStatus `json:"syncs,omitempty"`
 }
 
+type SyncState string
+
+const (
+	// Synced successfully
+	StateSucceeded SyncState = "succeeded"
+	// Synced unsuccessfully
+	StateFailed SyncState = "failed"
+	// Updated since last sync
+	StateUpdated SyncState = "updated"
+)
+
+// SyncStatus gives the status of a specific sync.
 type SyncStatus struct {
-	Name string `json:"name"`
-	// TODO: indication of readiness
+	// Sync gives the last applied sync spec.
+	Sync NamedSync `json:"sync"`
+	// State gives the outcome of last applied sync spec.
+	State SyncState `json:"state"`
 }
 
 //+kubebuilder:object:root=true

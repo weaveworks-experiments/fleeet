@@ -134,6 +134,32 @@ spec:
             type: object
           status:
             description: ModuleStatus defines the observed state of Module
+            properties:
+              summary:
+                properties:
+                  failed:
+                    description: Failed gives the number of uses of this module that
+                      are in a failed state.
+                    type: integer
+                  succeeded:
+                    description: Succeeded gives the number of uses of this module
+                      that are in a succeeded state.
+                    type: integer
+                  total:
+                    description: Total gives the total number of assemblages using
+                      this module.
+                    type: integer
+                  updated:
+                    description: Updated gives the number of uses of this module that
+                      have been updated to the most recent module spec but not yet
+                      synced.
+                    type: integer
+                required:
+                - failed
+                - succeeded
+                - total
+                - updated
+                type: object
             type: object
         type: object
     served: true

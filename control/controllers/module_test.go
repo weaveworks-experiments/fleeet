@@ -20,6 +20,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
@@ -201,8 +202,11 @@ var _ = Describe("modules", func() {
 				}
 
 				newTag := "v0.3.5"
-				module.Spec.Sync.Source.Git.Version.Tag = newTag
-				Expect(k8sClient.Update(context.TODO(), module)).To(Succeed())
+				_, err := ctrlutil.CreateOrPatch(context.TODO(), k8sClient, module, func() error {
+					module.Spec.Sync.Source.Git.Version.Tag = newTag
+					return nil
+				})
+				Expect(err).NotTo(HaveOccurred())
 				Eventually(func() bool {
 					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
 					if err != nil {
@@ -216,6 +220,76 @@ var _ = Describe("modules", func() {
 					return true
 				}, "5s", "1s").Should(BeTrue())
 			})
+		})
+	})
+
+	Context("module status", func() {
+		var (
+			namespace *corev1.Namespace
+		)
+
+		BeforeEach(func() {
+			namespace = &corev1.Namespace{}
+			namespace.Name = "ns-" + randString(5)
+			Expect(k8sClient.Create(context.TODO(), namespace)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			Expect(k8sClient.Delete(context.TODO(), namespace)).To(Succeed())
+		})
+
+		It("reports aggregate stats in module status", func() {
+			cluster := clusterv1.Cluster{}
+			cluster.Namespace = namespace.Name
+			cluster.Name = "clus-" + randString(5)
+			Expect(k8sClient.Create(context.TODO(), &cluster)).To(Succeed())
+
+			module := fleetv1.Module{
+				Spec: fleetv1.ModuleSpec{
+					Selector: &metav1.LabelSelector{}, // match all
+					Sync:     makeSync("https://github.com/cuttlefacts/app", "v1.1.0"),
+				},
+			}
+			module.Namespace = namespace.Name
+			module.Name = "mod-" + randString(5)
+			Expect(k8sClient.Create(context.TODO(), &module)).To(Succeed())
+
+			var asms fleetv1.RemoteAssemblageList
+			Eventually(func() bool {
+				err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
+				return err == nil && len(asms.Items) > 0
+			}, "5s", "1s").Should(BeTrue())
+
+			asm := asms.Items[0]
+			Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+				Name: module.Name,
+				Sync: module.Spec.Sync,
+			}))
+
+			// All that is as expected. Now, give the assemblage a status,
+			// and make sure it gets back to the module.
+			syncs := asm.Spec.Assemblage.Syncs
+			for _, s := range syncs {
+				asm.Status.Syncs = append(asm.Status.Syncs, asmv1.SyncStatus{
+					Sync:  s,
+					State: asmv1.StateSucceeded,
+				})
+			}
+			Expect(k8sClient.Status().Update(context.TODO(), &asm)).To(Succeed())
+
+			var m fleetv1.Module
+			Eventually(func() bool {
+				err := k8sClient.Get(context.TODO(), types.NamespacedName{
+					Namespace: module.Namespace,
+					Name:      module.Name,
+				}, &m)
+				if err != nil {
+					return false
+				}
+				return m.Status.Summary != nil && m.Status.Summary.Succeeded > 0
+			}, "5s", "1s").Should(BeTrue())
+			Expect(m.Status.Summary.Total).To(Equal(1))
+			Expect(m.Status.Summary.Succeeded).To(Equal(1))
 		})
 	})
 })
