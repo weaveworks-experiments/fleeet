@@ -27,6 +27,21 @@ type ModuleSpec struct {
 
 // ModuleStatus defines the observed state of Module
 type ModuleStatus struct {
+	Summary *SyncSummary `json:"summary,omitempty"`
+}
+
+type SyncSummary struct {
+	// Total gives the total number of assemblages using this module.
+	Total int `json:"total"`
+	// Updated gives the number of uses of this module that have been
+	// updated to the most recent module spec but not yet synced.
+	Updated int `json:"updated"`
+	// Failed gives the number of uses of this module that are in a
+	// failed state.
+	Failed int `json:"failed"`
+	// Succeeded gives the number of uses of this module that are in a
+	// succeeded state.
+	Succeeded int `json:"succeeded"`
 }
 
 //+kubebuilder:object:root=true

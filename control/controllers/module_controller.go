@@ -58,6 +58,27 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
 	}
 
+	summary := &fleetv1.SyncSummary{}
+	for _, asm := range asms.Items {
+		for _, s := range asm.Status.Syncs {
+			if s.Sync.Name == mod.Name {
+				switch s.State {
+				case asmv1.StateSucceeded:
+					summary.Succeeded++
+				case asmv1.StateFailed:
+					summary.Failed++
+				case asmv1.StateUpdated:
+					summary.Updated++
+				}
+			}
+		}
+		summary.Total++
+	}
+	mod.Status.Summary = summary
+	if err := r.Status().Update(ctx, &mod); err != nil {
+		return ctrl.Result{}, fmt.Errorf("updating status of module: %w", err)
+	}
+
 	// --- create/update/delete remote assemblages
 
 	// Make sure there is a remote assemblage which includes this
