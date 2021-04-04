@@ -98,32 +98,27 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, fmt.Errorf("failed to list selected clusters: %w", err)
 	}
 
-	// TODO go through the assemblages to figure out:
-	// - which need the module included;
-	// - which need the module removed;
-	// - whether there's any that need to be created
-
 	// Keep track of the assemblages which did require this module;
-	// afterwards, this will be helpful to determine which assemblages
-	// need the module removed.
+	// afterwards, this will be helpful to determine the assemblages
+	// which need the module removed.
 	requiredAsm := map[string]struct{}{}
 	for _, cluster := range clusters.Items {
+		// This loop makes sure every cluster that matches the
+		// selector has a remote assemblage with the latest definition
+		// of the module, by either updating an existing assemblage or
+		// creating one.
 		requiredAsm[cluster.GetName()] = struct{}{}
 
 		asm := &fleetv1.RemoteAssemblage{}
 		asm.Namespace = cluster.GetNamespace()
 		asm.Name = cluster.GetName()
 
-		// This loop makes sure every cluster that matches the
-		// selector has a remote assemblage with the latest definition
-		// of the module, by either updating an existing assemblage or
-		// creating one.
 		if op, err := controllerutil.CreateOrUpdate(ctx, r.Client, asm, func() error {
 			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
 				return err
 			}
 			// if this module is to be found in the syncs, make sure
-			// it's the up to date definition
+			// it's the up to date definition.
 			syncs := asm.Spec.Assemblage.Syncs
 			for i, sync := range syncs {
 				if sync.Name == mod.Name {
