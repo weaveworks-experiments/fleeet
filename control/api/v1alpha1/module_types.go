@@ -20,10 +20,37 @@ type ModuleSpec struct {
 	// +optional
 	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 
+	// Rollout gives the strategy for updating the module
+	// +optional
+	// +kubebuilder:default={"strategy": "all-at-once"}
+	Rollout *RolloutSpec `json:"rollout,omitempty"`
+
 	// Sync gives the configuration to sync on assigned clusters.
 	// +required
 	Sync asmv1.Sync `json:"sync"`
 }
+
+// RolloutSpec defines how the module rolls out changes when it is
+// updated itself.
+type RolloutSpec struct {
+	// Strategy names the rollout strategy to use when updating
+	// assigned clusters.
+	// +required
+	// +kubebuilder:validation:Enum=all-at-once;gradual
+	Strategy RolloutStrategyName `json:"strategy"`
+}
+
+type RolloutStrategyName string
+
+const (
+	// RolloutReplace names the strategy in which all module uses are
+	// replaced with the new definition.
+	RolloutReplace RolloutStrategyName = "all-at-once"
+	// RolloutGradual names the strategy in which module uses are
+	// updated gradually, making sure there are a limited number of
+	// clusters updating at any point.
+	RolloutGradual RolloutStrategyName = "gradual"
+)
 
 // ModuleStatus defines the observed state of Module
 type ModuleStatus struct {

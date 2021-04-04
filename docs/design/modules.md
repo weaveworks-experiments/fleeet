@@ -22,3 +22,6 @@ simplest is to update one cluster at a time, and wait until it is ready before u
 The trickier questions come when you consider what to do if the assigned clusters are still in a
 rollout when you begin another, i.e., there is already at least one cluster in updating
 state. Naively, you might simply wait until there are no clusters in updating state.
+
+What about if new clusters are assigned? There is nothing to do but give them the new configuration,
+but does this count against the budget for clusters in updating state?

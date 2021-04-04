@@ -52,6 +52,21 @@ spec:
           spec:
             description: ModuleSpec defines the desired state of Module
             properties:
+              rollout:
+                default:
+                  strategy: all-at-once
+                description: Rollout gives the strategy for updating the module
+                properties:
+                  strategy:
+                    description: Strategy names the rollout strategy to use when updating
+                      assigned clusters.
+                    enum:
+                    - all-at-once
+                    - gradual
+                    type: string
+                required:
+                - strategy
+                type: object
               selector:
                 description: Selector gives the criteria for assigning this module
                   to an cluster. If missing, no clusters are selected. If present
