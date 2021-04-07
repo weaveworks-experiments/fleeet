@@ -87,8 +87,8 @@ const (
 	StateSucceeded SyncState = "succeeded"
 	// Synced unsuccessfully
 	StateFailed SyncState = "failed"
-	// Updated since last sync
-	StateUpdated SyncState = "updated"
+	// Updating in progress
+	StateUpdating SyncState = "updating"
 )
 
 // SyncStatus gives the status of a specific sync.
