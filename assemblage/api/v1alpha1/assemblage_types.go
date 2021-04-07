@@ -11,16 +11,19 @@ import (
 // AssemblageSpec defines the desired state of Assemblage
 type AssemblageSpec struct {
 	// +required
-	Syncs []Sync `json:"syncs"`
+	Syncs []NamedSync `json:"syncs"`
+}
+
+type NamedSync struct {
+	// Name gives the sync a name so it can be correlated to the status
+	// +required
+	Name string `json:"name"`
+	Sync `json:",inline"`
 }
 
 // Sync defines a versioned piece of configuration to be synced, and
 // how to sync it.
 type Sync struct {
-	// Name gives the sync a name so it can be correlated to the status
-	// +required
-	Name string `json:"name"`
-
 	// Source gives the specification for how to get the configuration
 	// to be synced
 	// +required
@@ -77,9 +80,23 @@ type AssemblageStatus struct {
 	Syncs []SyncStatus `json:"syncs,omitempty"`
 }
 
+type SyncState string
+
+const (
+	// Synced successfully
+	StateSucceeded SyncState = "succeeded"
+	// Synced unsuccessfully
+	StateFailed SyncState = "failed"
+	// Updating in progress
+	StateUpdating SyncState = "updating"
+)
+
+// SyncStatus gives the status of a specific sync.
 type SyncStatus struct {
-	Name string `json:"name"`
-	// TODO: indication of readiness
+	// Sync gives the last applied sync spec.
+	Sync NamedSync `json:"sync"`
+	// State gives the outcome of last applied sync spec.
+	State SyncState `json:"state"`
 }
 
 //+kubebuilder:object:root=true

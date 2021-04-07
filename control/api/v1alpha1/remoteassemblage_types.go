@@ -32,8 +32,7 @@ type LocalKubeconfigReference struct {
 
 // RemoteAssemblageStatus defines the observed state of RemoteAssemblage
 type RemoteAssemblageStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	Syncs []asmv1.SyncStatus `json:"syncs,omitempty"`
 }
 
 //+kubebuilder:object:root=true

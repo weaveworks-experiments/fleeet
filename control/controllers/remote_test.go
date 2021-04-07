@@ -37,6 +37,7 @@ var _ = Describe("remote assemblages", func() {
 	var (
 		manager             ctrl.Manager
 		stopManager         func()
+		managerDone         chan struct{}
 		downstreamK8sClient client.Client
 		downstreamEnv       *envtest.Environment
 		cluster             *clusterv1.Cluster
@@ -62,10 +63,12 @@ var _ = Describe("remote assemblages", func() {
 		Expect(remoteReconciler.SetupWithManager(manager)).To(Succeed())
 
 		var ctx context.Context
-		ctx, stopManager = context.WithCancel(ctrl.SetupSignalHandler())
+		ctx, stopManager = context.WithCancel(signalHandler)
+		managerDone = make(chan struct{})
 		go func() {
 			defer GinkgoRecover()
 			Expect(manager.Start(ctx)).To(Succeed())
+			close(managerDone)
 		}()
 	})
 
@@ -79,6 +82,7 @@ var _ = Describe("remote assemblages", func() {
 		By("tearing down the test environment")
 		err := downstreamEnv.Stop()
 		Expect(err).ToNot(HaveOccurred())
+		<-managerDone
 	})
 
 	Context("proxying", func() {
@@ -88,13 +92,15 @@ var _ = Describe("remote assemblages", func() {
 				Spec: fleetv1.RemoteAssemblageSpec{
 					KubeconfigRef: fleetv1.LocalKubeconfigReference{Name: clusterSecret.Name},
 					Assemblage: asmv1.AssemblageSpec{
-						Syncs: []asmv1.Sync{
+						Syncs: []asmv1.NamedSync{
 							{
 								Name: "app",
-								Source: asmv1.SourceSpec{
-									Git: &asmv1.GitSource{
-										URL:     "https://github.com/cuttlefacts/cuttlefacts-app",
-										Version: asmv1.GitVersion{Tag: "v0.3.0"},
+								Sync: asmv1.Sync{
+									Source: asmv1.SourceSpec{
+										Git: &asmv1.GitSource{
+											URL:     "https://github.com/cuttlefacts/cuttlefacts-app",
+											Version: asmv1.GitVersion{Tag: "v0.3.0"},
+										},
 									},
 								},
 							},
