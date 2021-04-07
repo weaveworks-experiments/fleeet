@@ -27,15 +27,23 @@ type ModuleSpec struct {
 
 // ModuleStatus defines the observed state of Module
 type ModuleStatus struct {
+	// ObservedSync gives the spec of the Sync as most recently acted
+	// upon.
+	// +optional
+	ObservedSync *asmv1.Sync `json:"observedSync,omitempty"`
+	// Summary gives the numbers of uses of the module that are in
+	// various states at last count.
+	// +optional
 	Summary *SyncSummary `json:"summary,omitempty"`
 }
 
 type SyncSummary struct {
 	// Total gives the total number of assemblages using this module.
 	Total int `json:"total"`
-	// Updated gives the number of uses of this module that have been
-	// updated to the most recent module spec but not yet synced.
-	Updated int `json:"updated"`
+	// Updating gives the number of uses of this module that are in
+	// progress updating to the most recent module spec, and not yet
+	// synced.
+	Updating int `json:"updating"`
 	// Failed gives the number of uses of this module that are in a
 	// failed state.
 	Failed int `json:"failed"`
@@ -46,6 +54,11 @@ type SyncSummary struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Revision",type=string,JSONPath=`.status.observedSync.revision`
+//+kubebuilder:printcolumn:name="Total",type=string,JSONPath=`.status.summary.total`
+//+kubebuilder:printcolumn:name="Updating",type=string,JSONPath=`.status.summary.updating`
+//+kubebuilder:printcolumn:name="Succeeded",type=string,JSONPath=`.status.summary.succeeded`
+//+kubebuilder:printcolumn:name="Failed",type=string,JSONPath=`.status.summary.failed`
 
 // Module is the Schema for the modules API
 type Module struct {

@@ -67,8 +67,8 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					summary.Succeeded++
 				case asmv1.StateFailed:
 					summary.Failed++
-				case asmv1.StateUpdated:
-					summary.Updated++
+				case asmv1.StateUpdating:
+					summary.Updating++
 				}
 			}
 		}
@@ -159,6 +159,13 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				}
 			}
 		}
+	}
+
+	// TODO: This should correspond to the summary; figure out if the
+	// summary should be calculated based on changes done above.
+	mod.Status.ObservedSync = &mod.Spec.Sync
+	if err := r.Status().Update(ctx, &mod); err != nil {
+		return ctrl.Result{}, fmt.Errorf("updating status of module: %w", err)
 	}
 
 	return ctrl.Result{}, nil
