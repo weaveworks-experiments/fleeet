@@ -114,7 +114,15 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		asm.Name = cluster.GetName()
 
 		if op, err := controllerutil.CreateOrUpdate(ctx, r.Client, asm, func() error {
+			// Each RemoteAssemblage is owned by each of the modules
+			// assigned to it. This is for the sake of indexing.
 			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
+				return err
+			}
+			// Each RemoteAssemblage is _specially_ owned by the
+			// cluster to which it pertains. This is so that removing
+			// the cluster will garbage collect the remote assemblage.
+			if err := controllerutil.SetControllerReference(&cluster, asm, r.Scheme); err != nil {
 				return err
 			}
 
@@ -157,6 +165,7 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			for i, sync := range syncs {
 				if sync.Name == mod.Name {
 					asm.Spec.Assemblage.Syncs = append(syncs[:i], syncs[i+1:]...)
+					removeOwnerRef(&mod, &asm)
 					if err := r.Update(ctx, &asm); err != nil {
 						log.Error(err, "removing module from remote assemblage", "assemblage", asm.Name)
 					}
@@ -176,9 +185,20 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
+func removeOwnerRef(nonOwner, obj metav1.Object) {
+	owners := obj.GetOwnerReferences()
+	newOwners := make([]metav1.OwnerReference, len(owners))
+	removeUID := nonOwner.GetUID()
+	for i := range owners {
+		if owners[i].UID != removeUID {
+			newOwners = append(newOwners, owners[i])
+		}
+	}
+	obj.SetOwnerReferences(newOwners)
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	// This sets up an index on the Module owners of RemoteAssemblage
 	// objects. This complements the Watch on assemblage owners,
 	// below: that enqueues all the modules related to an assemblage
