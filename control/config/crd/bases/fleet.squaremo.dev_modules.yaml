@@ -17,7 +17,7 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.observedSync.revision
+    - jsonPath: .status.observedSync.source.git.version
       name: Revision
       type: string
     - jsonPath: .status.summary.total

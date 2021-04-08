@@ -54,7 +54,7 @@ type SyncSummary struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:printcolumn:name="Revision",type=string,JSONPath=`.status.observedSync.revision`
+//+kubebuilder:printcolumn:name="Revision",type=string,JSONPath=`.status.observedSync.source.git.version`
 //+kubebuilder:printcolumn:name="Total",type=string,JSONPath=`.status.summary.total`
 //+kubebuilder:printcolumn:name="Updating",type=string,JSONPath=`.status.summary.updating`
 //+kubebuilder:printcolumn:name="Succeeded",type=string,JSONPath=`.status.summary.succeeded`
