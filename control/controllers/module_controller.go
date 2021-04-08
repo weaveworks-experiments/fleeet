@@ -117,6 +117,11 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
 				return err
 			}
+
+			asm.Spec.KubeconfigRef = fleetv1.LocalKubeconfigReference{
+				Name: cluster.GetName() + "-kubeconfig", // FIXME refer to cluster instead
+			}
+
 			// if this module is to be found in the syncs, make sure
 			// it's the up to date definition.
 			syncs := asm.Spec.Assemblage.Syncs
