@@ -72,10 +72,15 @@ func (r *RemoteAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	switch op {
-	case controllerutil.OperationResultUpdated:
-		// update the RemoteAssemblage status
+	case controllerutil.OperationResultNone,
+		controllerutil.OperationResultUpdated:
+		asm.Status.Syncs = counterpart.Status.Syncs
 	case controllerutil.OperationResultCreated:
-		// set a condition saying the downstream is created
+		// TODO set a condition saying the downstream is created
+	}
+
+	if err = r.Status().Update(ctx, &asm); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
