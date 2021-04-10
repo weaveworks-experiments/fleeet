@@ -15,11 +15,13 @@ import (
 	//	corev1 "k8s.io/api/core/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
@@ -39,6 +41,20 @@ func makeSync(url, tag string) asmv1.Sync {
 			},
 		},
 		// leave package to default
+	}
+}
+
+func ownerRef(obj metav1.Object) metav1.OwnerReference {
+	// Create a new owner ref.
+	ro, ok := obj.(runtime.Object)
+	Expect(ok).To(BeTrue())
+	gvk, err := apiutil.GVKForObject(ro, scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	return metav1.OwnerReference{
+		APIVersion: gvk.GroupVersion().String(),
+		Kind:       gvk.Kind,
+		UID:        obj.GetUID(),
+		Name:       obj.GetName(),
 	}
 }
 
@@ -99,9 +115,11 @@ var _ = Describe("modules", func() {
 				cluster := &clusterv1.Cluster{}
 				cluster.Name = name
 				cluster.Namespace = namespace.Name
+				cluster.SetLabels(map[string]string{
+					"environment": "production",
+				})
 				Expect(k8sClient.Create(context.Background(), cluster)).To(Succeed())
 			}
-			// TODO details of the cluster
 		})
 
 		AfterEach(func() {
@@ -146,10 +164,12 @@ var _ = Describe("modules", func() {
 						Name: "matches",
 						Sync: matchModule.Spec.Sync,
 					}))
+					Expect(asm.GetOwnerReferences()).To(ContainElement(ownerRef(matchModule)))
 					Expect(asm.Spec.Assemblage.Syncs).NotTo(ContainElement(asmv1.NamedSync{
 						Name: "nomatch",
 						Sync: nomatchModule.Spec.Sync,
 					}))
+					Expect(asm.GetOwnerReferences()).NotTo(ContainElement(ownerRef(nomatchModule)))
 				}
 
 				// add a cluster and check that it gets matched
@@ -170,6 +190,12 @@ var _ = Describe("modules", func() {
 					Name: matchModule.Name,
 					Sync: matchModule.Spec.Sync,
 				}))
+				// the remote assemblage should be special-owned by the cluster
+				clusterOwnerRef := ownerRef(&newCluster)
+				t := true
+				clusterOwnerRef.Controller = &t
+				clusterOwnerRef.BlockOwnerDeletion = &t
+				Expect(newAsm.GetOwnerReferences()).To(ContainElement(clusterOwnerRef))
 				Expect(newAsm.Spec.Assemblage.Syncs).NotTo(ContainElement(asmv1.NamedSync{
 					Name: nomatchModule.Name,
 					Sync: nomatchModule.Spec.Sync,

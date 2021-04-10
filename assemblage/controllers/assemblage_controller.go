@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/go-logr/logr"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
@@ -43,25 +46,43 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	// For each sync, make sure the correct GitOps Toolkit objects
-	// exist
+	// exist, and collect the status of any that do.
+	var statuses []fleetv1.SyncStatus
 	for i, sync := range asm.Spec.Syncs {
+		syncStatus := fleetv1.SyncStatus{
+			Sync: sync,
+		}
+
 		// Firstly, a source
 		var source sourcev1.GitRepository
 		source.Namespace = asm.Namespace
-		source.Name = fmt.Sprintf("%s-%d", asm.Name, i)
+		source.Name = fmt.Sprintf("%s-%d", asm.Name, i) // TODO is the order stable?
 
-		if _, err := ctrl.CreateOrUpdate(ctx, r.Client, &source, func() error {
-			spec, err := gitRepositorySpecFromSync(&sync.Sync)
-			if err != nil {
+		op, err := ctrl.CreateOrUpdate(ctx, r.Client, &source, func() error {
+			if err := populateGitRepositorySpecFromSync(&source.Spec, &sync.Sync); err != nil {
 				return err
 			}
-			source.Spec = spec
-			// TODO set the owner
+			if err := controllerutil.SetControllerReference(&asm, &source, r.Scheme); err != nil {
+				return err
+			}
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
 			return ctrl.Result{}, err
 		}
-		log.Info("creating/updating source git repository", "name", source.Name)
+		log.Info("creating/updating source git repository", "name", source.Name, "operation", op)
+
+		// If the source changed, it's all updating
+		switch op {
+		case controllerutil.OperationResultCreated,
+			controllerutil.OperationResultUpdated,
+			controllerutil.OperationResultUpdatedStatus:
+			syncStatus.State = fleetv1.StateUpdating
+		case controllerutil.OperationResultNone:
+			break
+		default:
+			log.V(1).Info("unhandled operation result", "operation", op)
+		}
 
 		// Secondly, a Kustomization
 		switch {
@@ -70,45 +91,81 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			kustom.Namespace = asm.Namespace
 			kustom.Name = fmt.Sprintf("%s-%d", asm.Name, i)
 
-			if _, err := ctrl.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
+			op, err := ctrl.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
 				spec, err := kustomizationSpecFromPackage(sync.Package, source.Name)
 				if err != nil {
 					return err
 				}
 				kustom.Spec = spec
+				if err = controllerutil.SetControllerReference(&asm, &kustom, r.Scheme); err != nil {
+					return err
+				}
 				return nil
-			}); err != nil {
+			})
+			if err != nil {
 				return ctrl.Result{}, err
 			}
-			log.Info("creating/updating kustomization", "name", kustom.Name)
+			log.Info("creating/updating kustomization", "name", kustom.Name, "operation", op)
+			// the source might be unready above, in which case the
+			// aggregate state is updating; but if not, it'll be down
+			// to the kustomization's ready state
+			if syncStatus.State == "" {
+				switch op {
+				case controllerutil.OperationResultNone:
+					syncStatus.State = readyState(&kustom)
+				default:
+					syncStatus.State = fleetv1.StateUpdating
+				}
+			}
 		default:
 			log.Info("no sync package present", "sync", i)
 		}
+		statuses = append(statuses, syncStatus)
 	}
 
-	// TODO For each GitOps Toolkit sync object, collect the status
+	asm.Status.Syncs = statuses
+	if err := r.Status().Update(ctx, &asm); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
 
-func gitRepositorySpecFromSync(sync *fleetv1.Sync) (sourcev1.GitRepositorySpec, error) {
-	var dstSpec sourcev1.GitRepositorySpec
-	srcSpec := sync.Source.Git
-	dstSpec.URL = srcSpec.URL
-	dstSpec.Interval = metav1.Duration{Duration: time.Minute} // TODO arbitrary
+func readyState(obj meta.ObjectWithStatusConditions) fleetv1.SyncState {
+	conditions := obj.GetStatusConditions()
+	c := apimeta.FindStatusCondition(*conditions, meta.ReadyCondition)
+	switch {
+	case c == nil:
+		return fleetv1.StateUpdating
+	case c.Status == metav1.ConditionTrue:
+		return fleetv1.StateSucceeded
+	case c.Status == metav1.ConditionFalse:
+		if c.Reason == meta.ReconciliationFailedReason {
+			return fleetv1.StateFailed
+		} else {
+			return fleetv1.StateUpdating
+		}
+	default: // FIXME possibly StateUnknown?
+		return fleetv1.StateUpdating
+	}
+}
 
-	var ref sourcev1.GitRepositoryRef
+func populateGitRepositorySpecFromSync(dst *sourcev1.GitRepositorySpec, sync *fleetv1.Sync) error {
+	srcSpec := sync.Source.Git
+	dst.URL = srcSpec.URL
+	dst.Interval = metav1.Duration{Duration: time.Minute} // TODO arbitrary
+
+	ref := *dst.Reference
 	if tag := srcSpec.Version.Tag; tag != "" {
 		ref.Tag = tag
 	} else if rev := srcSpec.Version.Revision; rev != "" {
-		ref.Branch = "main" // FIXME a hack to make it work with my repos, see https://github.com/fluxcd/source-controller/issues/315
 		ref.Commit = rev
 	} else {
-		return dstSpec, fmt.Errorf("neither tag nor revision given in git source spec")
+		return fmt.Errorf("neither tag nor revision given in git source spec")
 	}
-	dstSpec.Reference = &ref
+	dst.Reference = &ref
 
-	return dstSpec, nil
+	return nil
 }
 
 func kustomizationSpecFromPackage(pkg *fleetv1.PackageSpec, sourceName string) (kustomv1.KustomizationSpec, error) {
@@ -125,5 +182,7 @@ func kustomizationSpecFromPackage(pkg *fleetv1.PackageSpec, sourceName string) (
 func (r *AssemblageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.Assemblage{}).
+		Owns(&sourcev1.GitRepository{}).
+		Owns(&kustomv1.Kustomization{}).
 		Complete(r)
 }

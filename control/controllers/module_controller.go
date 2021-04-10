@@ -50,35 +50,6 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// --- update this module's status ---
-
-	// Find all assemblages that include this module
-	var asms fleetv1.RemoteAssemblageList
-	if err := r.List(ctx, &asms, client.InNamespace(req.Namespace), client.MatchingFields{assemblageOwnerKey: req.Name}); err != nil {
-		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
-	}
-
-	summary := &fleetv1.SyncSummary{}
-	for _, asm := range asms.Items {
-		for _, s := range asm.Status.Syncs {
-			if s.Sync.Name == mod.Name {
-				switch s.State {
-				case asmv1.StateSucceeded:
-					summary.Succeeded++
-				case asmv1.StateFailed:
-					summary.Failed++
-				case asmv1.StateUpdating:
-					summary.Updating++
-				}
-			}
-		}
-		summary.Total++
-	}
-	mod.Status.Summary = summary
-	if err := r.Status().Update(ctx, &mod); err != nil {
-		return ctrl.Result{}, fmt.Errorf("updating status of module: %w", err)
-	}
-
 	// --- create/update/delete remote assemblages
 
 	// Make sure there is a remote assemblage which includes this
@@ -94,15 +65,21 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	if err := r.List(ctx, &clusters, &client.ListOptions{
 		LabelSelector: selector,
+		Namespace:     mod.Namespace,
 	}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to list selected clusters: %w", err)
 	}
+
+	summary := &fleetv1.SyncSummary{}
 
 	// Keep track of the assemblages which did require this module;
 	// afterwards, this will be helpful to determine the assemblages
 	// which need the module removed.
 	requiredAsm := map[string]struct{}{}
+
+clusters:
 	for _, cluster := range clusters.Items {
+		summary.Total++
 		// This loop makes sure every cluster that matches the
 		// selector has a remote assemblage with the latest definition
 		// of the module, by either updating an existing assemblage or
@@ -113,10 +90,23 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		asm.Namespace = cluster.GetNamespace()
 		asm.Name = cluster.GetName()
 
-		if op, err := controllerutil.CreateOrUpdate(ctx, r.Client, asm, func() error {
+		op, err := controllerutil.CreateOrUpdate(ctx, r.Client, asm, func() error {
+			// Each RemoteAssemblage is owned by each of the modules
+			// assigned to it. This is for the sake of indexing.
 			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
 				return err
 			}
+			// Each RemoteAssemblage is _specially_ owned by the
+			// cluster to which it pertains. This is so that removing
+			// the cluster will garbage collect the remote assemblage.
+			if err := controllerutil.SetControllerReference(&cluster, asm, r.Scheme); err != nil {
+				return err
+			}
+
+			asm.Spec.KubeconfigRef = fleetv1.LocalKubeconfigReference{
+				Name: cluster.GetName() + "-kubeconfig", // FIXME refer to cluster instead
+			}
+
 			// if this module is to be found in the syncs, make sure
 			// it's the up to date definition.
 			syncs := asm.Spec.Assemblage.Syncs
@@ -135,11 +125,34 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				Sync: mod.Spec.Sync,
 			})
 			return nil
-		}); err != nil {
+		})
+		if err != nil {
+			// if something went wrong with this one, track it as a failure
+			summary.Failed++
 			log.Error(err, "updating remote assemblages", "assemblage", asm.Name)
 		} else {
 			log.V(1).Info("updated assemblage", "assemblage", asm.Name, "operation", op)
+			for _, sync := range asm.Status.Syncs {
+				if sync.Sync.Name == mod.Name {
+					incrementSummary(summary, sync)
+					continue clusters // all done here
+				}
+			}
+			// no change made, but status not found -> updating
+			summary.Updating++
 		}
+	}
+
+	mod.Status.Summary = summary
+	if err := r.Status().Update(ctx, &mod); err != nil {
+		return ctrl.Result{}, fmt.Errorf("updating status of module: %w", err)
+	}
+
+	// Find all assemblages indexed as owned by (i.e., including) this
+	// module
+	var asms fleetv1.RemoteAssemblageList
+	if err := r.List(ctx, &asms, client.InNamespace(req.Namespace), client.MatchingFields{assemblageOwnerKey: req.Name}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
 	}
 
 	// This loop removes the module from any assemblage for a cluster
@@ -152,6 +165,7 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			for i, sync := range syncs {
 				if sync.Name == mod.Name {
 					asm.Spec.Assemblage.Syncs = append(syncs[:i], syncs[i+1:]...)
+					removeOwnerRef(&mod, &asm)
 					if err := r.Update(ctx, &asm); err != nil {
 						log.Error(err, "removing module from remote assemblage", "assemblage", asm.Name)
 					}
@@ -171,9 +185,31 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	return ctrl.Result{}, nil
 }
 
+func removeOwnerRef(nonOwner, obj metav1.Object) {
+	owners := obj.GetOwnerReferences()
+	newOwners := make([]metav1.OwnerReference, len(owners))
+	removeUID := nonOwner.GetUID()
+	for i := range owners {
+		if owners[i].UID != removeUID {
+			newOwners = append(newOwners, owners[i])
+		}
+	}
+	obj.SetOwnerReferences(newOwners)
+}
+
+func incrementSummary(summary *fleetv1.SyncSummary, sync asmv1.SyncStatus) {
+	switch sync.State {
+	case asmv1.StateSucceeded:
+		summary.Succeeded++
+	case asmv1.StateFailed:
+		summary.Failed++
+	default:
+		summary.Updating++
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-
 	// This sets up an index on the Module owners of RemoteAssemblage
 	// objects. This complements the Watch on assemblage owners,
 	// below: that enqueues all the modules related to an assemblage
