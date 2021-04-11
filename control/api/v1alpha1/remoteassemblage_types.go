@@ -8,6 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 // RemoteAssemblageSpec defines the desired state of RemoteAssemblage
@@ -32,7 +33,7 @@ type LocalKubeconfigReference struct {
 
 // RemoteAssemblageStatus defines the observed state of RemoteAssemblage
 type RemoteAssemblageStatus struct {
-	Syncs []asmv1.SyncStatus `json:"syncs,omitempty"`
+	Syncs []syncapi.SyncStatus `json:"syncs,omitempty"`
 }
 
 //+kubebuilder:object:root=true

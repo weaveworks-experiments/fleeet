@@ -54,8 +54,8 @@ spec:
             properties:
               selector:
                 description: Selector gives the criteria for assigning this module
-                  to an cluster. If missing, no clusters are selected. If present
-                  and empty, all clusters are selected.
+                  to a cluster. If missing, no clusters are selected. If present and
+                  empty, all clusters are selected.
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.

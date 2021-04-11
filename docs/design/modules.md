@@ -79,3 +79,8 @@ own sync (i.e., like Flux bootstrap works).
 Because the idea is you can roll out new versions of a configuration in a BootstrapModule, as with a
 Module, and assign to different clusters (though I would expect typically you'd assign bootstrap
 modules to all clusters). Those are things that come with modules rather than assemblages.
+
+**Why a different type rather than a field in Module?**
+
+It does a different thing, so deserves to be a different type. Being a distinct API makes it much
+easier to differentiate in RBAC rules.

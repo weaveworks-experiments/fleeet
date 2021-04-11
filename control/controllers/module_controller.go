@@ -21,8 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 // ModuleReconciler reconciles a Module object
@@ -120,7 +120,7 @@ clusters:
 				}
 			}
 			// not there -- add this module
-			asm.Spec.Assemblage.Syncs = append(syncs, asmv1.NamedSync{
+			asm.Spec.Assemblage.Syncs = append(syncs, syncapi.NamedSync{
 				Name: mod.Name,
 				Sync: mod.Spec.Sync,
 			})
@@ -197,11 +197,11 @@ func removeOwnerRef(nonOwner, obj metav1.Object) {
 	obj.SetOwnerReferences(newOwners)
 }
 
-func incrementSummary(summary *fleetv1.SyncSummary, sync asmv1.SyncStatus) {
+func incrementSummary(summary *fleetv1.SyncSummary, sync syncapi.SyncStatus) {
 	switch sync.State {
-	case asmv1.StateSucceeded:
+	case syncapi.StateSucceeded:
 		summary.Succeeded++
-	case asmv1.StateFailed:
+	case syncapi.StateFailed:
 		summary.Failed++
 	default:
 		summary.Updating++

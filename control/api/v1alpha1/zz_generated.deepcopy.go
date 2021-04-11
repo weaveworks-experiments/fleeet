@@ -9,7 +9,7 @@ Copyright 2021 Michael Bridgen <mikeb@squaremobius.net>.
 package v1alpha1
 
 import (
-	apiv1alpha1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	"github.com/squaremo/fleeet/pkg/api"
 	"k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 )
@@ -99,7 +99,7 @@ func (in *BootstrapModuleStatus) DeepCopyInto(out *BootstrapModuleStatus) {
 	*out = *in
 	if in.ObservedSync != nil {
 		in, out := &in.ObservedSync, &out.ObservedSync
-		*out = new(apiv1alpha1.Sync)
+		*out = new(api.Sync)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.Summary != nil {
@@ -219,7 +219,7 @@ func (in *ModuleStatus) DeepCopyInto(out *ModuleStatus) {
 	*out = *in
 	if in.ObservedSync != nil {
 		in, out := &in.ObservedSync, &out.ObservedSync
-		*out = new(apiv1alpha1.Sync)
+		*out = new(api.Sync)
 		(*in).DeepCopyInto(*out)
 	}
 	if in.Summary != nil {
@@ -320,7 +320,7 @@ func (in *RemoteAssemblageStatus) DeepCopyInto(out *RemoteAssemblageStatus) {
 	*out = *in
 	if in.Syncs != nil {
 		in, out := &in.Syncs, &out.Syncs
-		*out = make([]apiv1alpha1.SyncStatus, len(*in))
+		*out = make([]api.SyncStatus, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

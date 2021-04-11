@@ -25,6 +25,7 @@ import (
 
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 const (
@@ -92,14 +93,14 @@ var _ = Describe("remote assemblages", func() {
 				Spec: fleetv1.RemoteAssemblageSpec{
 					KubeconfigRef: fleetv1.LocalKubeconfigReference{Name: clusterSecret.Name},
 					Assemblage: asmv1.AssemblageSpec{
-						Syncs: []asmv1.NamedSync{
+						Syncs: []syncapi.NamedSync{
 							{
 								Name: "app",
-								Sync: asmv1.Sync{
-									Source: asmv1.SourceSpec{
-										Git: &asmv1.GitSource{
+								Sync: syncapi.Sync{
+									Source: syncapi.SourceSpec{
+										Git: &syncapi.GitSource{
 											URL:     "https://github.com/cuttlefacts/cuttlefacts-app",
-											Version: asmv1.GitVersion{Tag: "v0.3.0"},
+											Version: syncapi.GitVersion{Tag: "v0.3.0"},
 										},
 									},
 								},

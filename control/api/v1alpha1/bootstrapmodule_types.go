@@ -7,7 +7,7 @@ package v1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 // BootstrapModuleSpec defines the desired state of BootstrapModule
@@ -20,7 +20,7 @@ type BootstrapModuleSpec struct {
 
 	// Sync gives the configuration to sync on assigned clusters.
 	// +required
-	Sync asmv1.Sync `json:"sync"`
+	Sync syncapi.Sync `json:"sync"`
 }
 
 // BootstrapModuleStatus defines the observed state of BootstrapModule
@@ -28,7 +28,7 @@ type BootstrapModuleStatus struct {
 	// ObservedSync gives the spec of the Sync as most recently acted
 	// upon.
 	// +optional
-	ObservedSync *asmv1.Sync `json:"observedSync,omitempty"`
+	ObservedSync *syncapi.Sync `json:"observedSync,omitempty"`
 	// Summary gives the numbers of uses of the module that are in
 	// various states at last count.
 	// +optional

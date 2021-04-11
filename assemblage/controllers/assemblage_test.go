@@ -18,7 +18,9 @@ import (
 
 	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
-	fleetv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 func randomStr(prefix string) string {
@@ -69,9 +71,9 @@ var _ = Describe("assemblage controller", func() {
 	})
 
 	It("can be created", func() {
-		asm := fleetv1.Assemblage{
-			Spec: fleetv1.AssemblageSpec{
-				Syncs: []fleetv1.NamedSync{},
+		asm := asmv1.Assemblage{
+			Spec: asmv1.AssemblageSpec{
+				Syncs: []syncapi.NamedSync{},
 			},
 		}
 		asm.Name = "asm"
@@ -84,22 +86,22 @@ var _ = Describe("assemblage controller", func() {
 	})
 
 	It("creates GOTK objects", func() {
-		asm := fleetv1.Assemblage{
-			Spec: fleetv1.AssemblageSpec{
-				Syncs: []fleetv1.NamedSync{
+		asm := asmv1.Assemblage{
+			Spec: asmv1.AssemblageSpec{
+				Syncs: []syncapi.NamedSync{
 					{
 						Name: "app",
-						Sync: fleetv1.Sync{
-							Source: fleetv1.SourceSpec{
-								Git: &fleetv1.GitSource{
+						Sync: syncapi.Sync{
+							Source: syncapi.SourceSpec{
+								Git: &syncapi.GitSource{
 									URL: "https://github.com/cuttlefacts-app",
-									Version: fleetv1.GitVersion{
+									Version: syncapi.GitVersion{
 										Revision: "bd6ef78",
 									},
 								},
 							},
-							Package: &fleetv1.PackageSpec{
-								Kustomize: &fleetv1.KustomizeSpec{
+							Package: &syncapi.PackageSpec{
+								Kustomize: &syncapi.KustomizeSpec{
 									Path: "deploy",
 								},
 							},
