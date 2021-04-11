@@ -21,4 +21,13 @@ resources:
   kind: Module
   path: github.com/squaremo/fleeet/control/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: squaremo.dev
+  group: fleet
+  kind: BootstrapModule
+  path: github.com/squaremo/fleeet/control/api/v1alpha1
+  version: v1alpha1
 version: "3"

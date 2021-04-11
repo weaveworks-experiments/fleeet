@@ -23,6 +23,7 @@ import (
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	fleetv1alpha1 "github.com/squaremo/fleeet/control/api/v1alpha1"
 	"github.com/squaremo/fleeet/control/controllers"
 	//+kubebuilder:scaffold:imports
 )
@@ -38,6 +39,7 @@ func init() {
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
 
 	utilruntime.Must(fleetv1.AddToScheme(scheme))
+	utilruntime.Must(fleetv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -85,6 +87,14 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Module")
+		os.Exit(1)
+	}
+	if err = (&controllers.BootstrapModuleReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("BootstrapModule"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "BootstrapModule")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

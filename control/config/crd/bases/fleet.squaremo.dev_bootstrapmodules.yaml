@@ -1,0 +1,240 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.4.1
+  creationTimestamp: null
+  name: bootstrapmodules.fleet.squaremo.dev
+spec:
+  group: fleet.squaremo.dev
+  names:
+    kind: BootstrapModule
+    listKind: BootstrapModuleList
+    plural: bootstrapmodules
+    singular: bootstrapmodule
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.observedSync.source.git.version
+      name: Revision
+      type: string
+    - jsonPath: .status.summary.total
+      name: Total
+      type: string
+    - jsonPath: .status.summary.updating
+      name: Updating
+      type: string
+    - jsonPath: .status.summary.succeeded
+      name: Succeeded
+      type: string
+    - jsonPath: .status.summary.failed
+      name: Failed
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: BootstrapModule is the Schema for the bootstrapmodules API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: BootstrapModuleSpec defines the desired state of BootstrapModule
+            properties:
+              selector:
+                description: Selector gives the criteria for assigning this module
+                  to a cluster. If missing, no clusters are selected. If present and
+                  empty, all clusters are selected.
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: A label selector requirement is a selector that
+                        contains values, a key, and an operator that relates the key
+                        and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: operator represents a key's relationship to
+                            a set of values. Valid operators are In, NotIn, Exists
+                            and DoesNotExist.
+                          type: string
+                        values:
+                          description: values is an array of string values. If the
+                            operator is In or NotIn, the values array must be non-empty.
+                            If the operator is Exists or DoesNotExist, the values
+                            array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: matchLabels is a map of {key,value} pairs. A single
+                      {key,value} in the matchLabels map is equivalent to an element
+                      of matchExpressions, whose key field is "key", the operator
+                      is "In", and the values array contains only "value". The requirements
+                      are ANDed.
+                    type: object
+                type: object
+              sync:
+                description: Sync gives the configuration to sync on assigned clusters.
+                properties:
+                  package:
+                    default:
+                      kustomize:
+                        path: .
+                    description: Package defines how to deal with the configuration
+                      at the source, e.g., if it's a kustomization (or YAML files)
+                    properties:
+                      kustomize:
+                        properties:
+                          path:
+                            default: .
+                            description: Path gives the path within the source to
+                              treat as the Kustomization root.
+                            type: string
+                        type: object
+                    type: object
+                  source:
+                    description: Source gives the specification for how to get the
+                      configuration to be synced
+                    properties:
+                      git:
+                        properties:
+                          url:
+                            description: URL gives the URL for the git repository
+                            type: string
+                          version:
+                            description: Version gives either the revision or tag
+                              at which to get the git repo
+                            properties:
+                              revision:
+                                type: string
+                              tag:
+                                type: string
+                            type: object
+                        required:
+                        - url
+                        - version
+                        type: object
+                    required:
+                    - git
+                    type: object
+                required:
+                - source
+                type: object
+            required:
+            - sync
+            type: object
+          status:
+            description: BootstrapModuleStatus defines the observed state of BootstrapModule
+            properties:
+              observedSync:
+                description: ObservedSync gives the spec of the Sync as most recently
+                  acted upon.
+                properties:
+                  package:
+                    default:
+                      kustomize:
+                        path: .
+                    description: Package defines how to deal with the configuration
+                      at the source, e.g., if it's a kustomization (or YAML files)
+                    properties:
+                      kustomize:
+                        properties:
+                          path:
+                            default: .
+                            description: Path gives the path within the source to
+                              treat as the Kustomization root.
+                            type: string
+                        type: object
+                    type: object
+                  source:
+                    description: Source gives the specification for how to get the
+                      configuration to be synced
+                    properties:
+                      git:
+                        properties:
+                          url:
+                            description: URL gives the URL for the git repository
+                            type: string
+                          version:
+                            description: Version gives either the revision or tag
+                              at which to get the git repo
+                            properties:
+                              revision:
+                                type: string
+                              tag:
+                                type: string
+                            type: object
+                        required:
+                        - url
+                        - version
+                        type: object
+                    required:
+                    - git
+                    type: object
+                required:
+                - source
+                type: object
+              summary:
+                description: Summary gives the numbers of uses of the module that
+                  are in various states at last count.
+                properties:
+                  failed:
+                    description: Failed gives the number of uses of this module that
+                      are in a failed state.
+                    type: integer
+                  succeeded:
+                    description: Succeeded gives the number of uses of this module
+                      that are in a succeeded state.
+                    type: integer
+                  total:
+                    description: Total gives the total number of assemblages using
+                      this module.
+                    type: integer
+                  updating:
+                    description: Updating gives the number of uses of this module
+                      that are in progress updating to the most recent module spec,
+                      and not yet synced.
+                    type: integer
+                required:
+                - failed
+                - succeeded
+                - total
+                - updating
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
