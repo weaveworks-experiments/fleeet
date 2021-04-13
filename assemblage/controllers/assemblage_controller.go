@@ -61,7 +61,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		source.Name = fmt.Sprintf("%s-%d", asm.Name, i) // TODO is the order stable?
 
 		op, err := ctrl.CreateOrUpdate(ctx, r.Client, &source, func() error {
-			if err := populateGitRepositorySpecFromSync(&source.Spec, &sync.Sync); err != nil {
+			if err := syncapi.PopulateGitRepositorySpecFromSync(&source.Spec, &sync.Sync); err != nil {
 				return err
 			}
 			if err := controllerutil.SetControllerReference(&asm, &source, r.Scheme); err != nil {
@@ -94,7 +94,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			kustom.Name = fmt.Sprintf("%s-%d", asm.Name, i)
 
 			op, err := ctrl.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
-				spec, err := kustomizationSpecFromPackage(sync.Package, source.Name)
+				spec, err := syncapi.KustomizationSpecFromPackage(sync.Package, source.Name)
 				if err != nil {
 					return err
 				}
@@ -150,37 +150,6 @@ func readyState(obj meta.ObjectWithStatusConditions) syncapi.SyncState {
 	default: // FIXME possibly StateUnknown?
 		return syncapi.StateUpdating
 	}
-}
-
-func populateGitRepositorySpecFromSync(dst *sourcev1.GitRepositorySpec, sync *syncapi.Sync) error {
-	srcSpec := sync.Source.Git
-	dst.URL = srcSpec.URL
-	dst.Interval = metav1.Duration{Duration: time.Minute} // TODO arbitrary
-
-	var ref sourcev1.GitRepositoryRef
-	if dst.Reference != nil {
-		ref = *dst.Reference
-	}
-	if tag := srcSpec.Version.Tag; tag != "" {
-		ref.Tag = tag
-	} else if rev := srcSpec.Version.Revision; rev != "" {
-		ref.Commit = rev
-	} else {
-		return fmt.Errorf("neither tag nor revision given in git source spec")
-	}
-	dst.Reference = &ref
-
-	return nil
-}
-
-func kustomizationSpecFromPackage(pkg *syncapi.PackageSpec, sourceName string) (kustomv1.KustomizationSpec, error) {
-	var spec kustomv1.KustomizationSpec
-	spec.SourceRef = kustomv1.CrossNamespaceSourceReference{
-		Kind: sourcev1.GitRepositoryKind,
-		Name: sourceName,
-	}
-	spec.Path = pkg.Kustomize.Path
-	return spec, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.

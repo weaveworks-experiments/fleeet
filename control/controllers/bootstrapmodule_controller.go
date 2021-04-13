@@ -11,8 +11,13 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	fleetv1alpha1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	//kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
+
+	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 // BootstrapModuleReconciler reconciles a BootstrapModule object
@@ -29,7 +34,25 @@ type BootstrapModuleReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = r.Log.WithValues("bootstrapmodule", req.NamespacedName)
+	log := r.Log.WithValues("bootstrapmodule", req.NamespacedName)
+
+	var mod fleetv1.BootstrapModule
+	if err := r.Get(ctx, req.NamespacedName, &mod); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	log.V(1).Info("found BootstrapModule")
+
+	var source sourcev1.GitRepository
+	source.Namespace = mod.Namespace
+	source.Name = mod.Name
+	op, err := controllerutil.CreateOrUpdate(ctx, r.Client, &source, func() error {
+		return syncapi.PopulateGitRepositorySpecFromSync(&source.Spec, &mod.Spec.Sync)
+	})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	log.Info("created/updated GitRepository", "name", source.Name, "operation", op)
 
 	return ctrl.Result{}, nil
 }
@@ -37,6 +60,6 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 // SetupWithManager sets up the controller with the Manager.
 func (r *BootstrapModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&fleetv1alpha1.BootstrapModule{}).
+		For(&fleetv1.BootstrapModule{}).
 		Complete(r)
 }

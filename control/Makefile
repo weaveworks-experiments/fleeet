@@ -15,6 +15,7 @@ endif
 # where they go.
 TEST_CRDS:=controllers/testdata/crds
 CAPI_VER=master
+SOURCE_VER ?= v0.9.0
 
 all: build
 
@@ -48,6 +49,15 @@ fmt: ## Run go fmt against code.
 vet: ## Run go vet against code.
 	go vet ./...
 
+${TEST_CRDS}/gitrepositories.yaml: cache/gitrepositories-${SOURCE_VER}.yaml
+	mkdir -p ${TEST_CRDS}
+	cp $^ $@
+
+cache/gitrepositories-${SOURCE_VER}.yaml:
+	mkdir -p cache
+	curl -s --fail https://raw.githubusercontent.com/fluxcd/source-controller/${SOURCE_VER}/config/crd/bases/source.toolkit.fluxcd.io_gitrepositories.yaml \
+		-o $@
+
 ${TEST_CRDS}/clusters.yaml: cache/clusters-${CAPI_VER}.yaml
 	mkdir -p ${TEST_CRDS}
 	cp $^ $@
@@ -57,7 +67,7 @@ cache/clusters-${CAPI_VER}.yaml:
 	curl -s --fail https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/${CAPI_VER}/config/crd/bases/cluster.x-k8s.io_clusters.yaml \
 		-o $@
 
-test-deps: ${TEST_CRDS}/clusters.yaml
+test-deps: ${TEST_CRDS}/clusters.yaml ${TEST_CRDS}/gitrepositories.yaml
 .PHONY: test-deps
 
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin

@@ -8,6 +8,8 @@ replace github.com/squaremo/fleeet/pkg => ../pkg
 replace github.com/squaremo/fleeet/assemblage => ../assemblage
 
 require (
+	github.com/fluxcd/kustomize-controller/api v0.9.3
+	github.com/fluxcd/source-controller/api v0.9.0
 	github.com/go-logr/logr v0.4.0
 	github.com/onsi/ginkgo v1.15.0
 	github.com/onsi/gomega v1.10.5
