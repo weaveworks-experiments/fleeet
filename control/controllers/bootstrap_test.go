@@ -14,17 +14,17 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	// corev1 "k8s.io/api/core/v1"
-	// metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	// "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	// clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	ctrl "sigs.k8s.io/controller-runtime"
-	// "sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	// "sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	// ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	//	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
@@ -122,6 +122,7 @@ var _ = Describe("bootstrap module controller", func() {
 
 		mod := fleetv1.BootstrapModule{
 			Spec: fleetv1.BootstrapModuleSpec{
+				Selector: &metav1.LabelSelector{}, // all clusters
 				Sync: syncapi.Sync{
 					Source: syncapi.SourceSpec{
 						Git: &syncapi.GitSource{
@@ -143,8 +144,7 @@ var _ = Describe("bootstrap module controller", func() {
 		mod.Name = randString(5)
 		Expect(k8sClient.Create(context.TODO(), &mod)).To(Succeed())
 
-		// TODO create a cluster to be the target
-
+		// Check there's a GitRepository created for the module
 		var src sourcev1.GitRepository
 		Eventually(func() bool {
 			err := k8sClient.Get(context.TODO(), types.NamespacedName{
@@ -154,10 +154,27 @@ var _ = Describe("bootstrap module controller", func() {
 			return err == nil
 		}, "5s", "1s").Should(BeTrue())
 
-		// TODO check ownership
+		Expect(metav1.IsControlledBy(&src, &mod)).To(BeTrue())
 
-		// TODO create clusters and check there's a Kustomization per cluster.
+		// Create clusters and check there's a Kustomization per
+		// cluster, targeting the cluster.
+		clusters := make([]clusterv1.Cluster, 3)
+		for i := range clusters {
+			clusters[i].Name = "cluster-" + randString(5)
+			clusters[i].Namespace = namespace.Name
+			Expect(k8sClient.Create(context.TODO(), &clusters[i])).To(Succeed())
+		}
 
-		// TODO check that the cluster (secret) is the target
+		var kustoms kustomv1.KustomizationList
+		Eventually(func() bool {
+			if err := k8sClient.List(context.TODO(), &kustoms, client.InNamespace(namespace.Name)); err != nil {
+				return false
+			}
+			return len(kustoms.Items) >= len(clusters)
+		}, "5s", "1s").Should(BeTrue())
+		Expect(len(kustoms.Items)).To(Equal(len(clusters)))
+
+		// TODO check each one corresponds to a cluster, targets the
+		// cluster, and has the bootstrapmodule sync
 	})
 })
