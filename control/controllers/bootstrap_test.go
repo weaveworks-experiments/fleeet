@@ -6,7 +6,7 @@ package controllers
 
 import (
 	"context"
-	//	"fmt"
+	"fmt"
 	//	"path/filepath"
 	//	"time"
 
@@ -25,6 +25,7 @@ import (
 	// ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	meta "github.com/fluxcd/pkg/apis/meta"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
@@ -158,11 +159,13 @@ var _ = Describe("bootstrap module controller", func() {
 
 		// Create clusters and check there's a Kustomization per
 		// cluster, targeting the cluster.
-		clusters := make([]clusterv1.Cluster, 3)
-		for i := range clusters {
-			clusters[i].Name = "cluster-" + randString(5)
-			clusters[i].Namespace = namespace.Name
-			Expect(k8sClient.Create(context.TODO(), &clusters[i])).To(Succeed())
+		clusters := make(map[string]*clusterv1.Cluster)
+		for i := 0; i < 3; i++ {
+			cluster := &clusterv1.Cluster{}
+			cluster.Name = "cluster-" + randString(5)
+			cluster.Namespace = namespace.Name
+			clusters[cluster.Name] = cluster
+			Expect(k8sClient.Create(context.TODO(), cluster)).To(Succeed())
 		}
 
 		var kustoms kustomv1.KustomizationList
@@ -174,7 +177,41 @@ var _ = Describe("bootstrap module controller", func() {
 		}, "5s", "1s").Should(BeTrue())
 		Expect(len(kustoms.Items)).To(Equal(len(clusters)))
 
-		// TODO check each one corresponds to a cluster, targets the
-		// cluster, and has the bootstrapmodule sync
+		// Check each Kustomization is controlled by the module, owned
+		// by a cluster, targets the cluster, and has the
+		// bootstrapmodule sync.
+
+		for _, kustom := range kustoms.Items {
+			// the kustomization spec is what the module says
+			Expect(kustom.Spec.SourceRef.Kind).To(Equal("GitRepository"))
+			Expect(kustom.Spec.SourceRef.Name).To(Equal(src.Name))
+			Expect(kustom.Spec.Path).To(Equal(mod.Spec.Sync.Package.Kustomize.Path))
+
+			// the module owns the ksutomization
+			controller := metav1.GetControllerOf(&kustom)
+			Expect(controller).NotTo(BeNil())
+			Expect(controller.Kind).To(Equal("BootstrapModule"))
+			Expect(controller.Name).To(Equal(mod.Name))
+
+			// one cluster owns the kustomization, and that cluster is
+			// targeted by the kubeconfig
+			ownersThatAreCluster := 0
+			for _, owner := range kustom.GetOwnerReferences() {
+				if owner.Kind == "Cluster" {
+					Expect(clusters).To(HaveKey(owner.Name))
+					Expect(kustom.Spec.KubeConfig).To(Equal(&kustomv1.KubeConfig{
+						SecretRef: meta.LocalObjectReference{
+							Name: fmt.Sprintf("%s-kubeconfig", owner.Name),
+						},
+					}))
+					ownersThatAreCluster++
+					// remove from consideration
+					delete(clusters, owner.Name)
+				}
+			}
+			Expect(ownersThatAreCluster).To(Equal(1))
+		}
+		// All the clusters were accounted for.
+		Expect(clusters).To(BeEmpty())
 	})
 })
