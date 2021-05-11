@@ -7,7 +7,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/go-logr/logr"
