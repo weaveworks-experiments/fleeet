@@ -6,14 +6,14 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.4.1
   creationTimestamp: null
-  name: modules.fleet.squaremo.dev
+  name: bootstrapmodules.fleet.squaremo.dev
 spec:
   group: fleet.squaremo.dev
   names:
-    kind: Module
-    listKind: ModuleList
-    plural: modules
-    singular: module
+    kind: BootstrapModule
+    listKind: BootstrapModuleList
+    plural: bootstrapmodules
+    singular: bootstrapmodule
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
@@ -35,7 +35,7 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Module is the Schema for the modules API
+        description: BootstrapModule is the Schema for the bootstrapmodules API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -50,7 +50,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ModuleSpec defines the desired state of Module
+            description: BootstrapModuleSpec defines the desired state of BootstrapModule
             properties:
               selector:
                 description: Selector gives the criteria for assigning this module
@@ -149,7 +149,7 @@ spec:
             - sync
             type: object
           status:
-            description: ModuleStatus defines the observed state of Module
+            description: BootstrapModuleStatus defines the observed state of BootstrapModule
             properties:
               observedSync:
                 description: ObservedSync gives the spec of the Sync as most recently

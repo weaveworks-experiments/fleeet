@@ -10,10 +10,8 @@ import (
 	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
-const KindModule = "Module"
-
-// ModuleSpec defines the desired state of Module
-type ModuleSpec struct {
+// BootstrapModuleSpec defines the desired state of BootstrapModule
+type BootstrapModuleSpec struct {
 	// Selector gives the criteria for assigning this module to a
 	// cluster. If missing, no clusters are selected. If present and
 	// empty, all clusters are selected.
@@ -25,8 +23,8 @@ type ModuleSpec struct {
 	Sync syncapi.Sync `json:"sync"`
 }
 
-// ModuleStatus defines the observed state of Module
-type ModuleStatus struct {
+// BootstrapModuleStatus defines the observed state of BootstrapModule
+type BootstrapModuleStatus struct {
 	// ObservedSync gives the spec of the Sync as most recently acted
 	// upon.
 	// +optional
@@ -37,21 +35,6 @@ type ModuleStatus struct {
 	Summary *SyncSummary `json:"summary,omitempty"`
 }
 
-type SyncSummary struct {
-	// Total gives the total number of assemblages using this module.
-	Total int `json:"total"`
-	// Updating gives the number of uses of this module that are in
-	// progress updating to the most recent module spec, and not yet
-	// synced.
-	Updating int `json:"updating"`
-	// Failed gives the number of uses of this module that are in a
-	// failed state.
-	Failed int `json:"failed"`
-	// Succeeded gives the number of uses of this module that are in a
-	// succeeded state.
-	Succeeded int `json:"succeeded"`
-}
-
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Revision",type=string,JSONPath=`.status.observedSync.source.git.version`
@@ -60,24 +43,24 @@ type SyncSummary struct {
 //+kubebuilder:printcolumn:name="Succeeded",type=string,JSONPath=`.status.summary.succeeded`
 //+kubebuilder:printcolumn:name="Failed",type=string,JSONPath=`.status.summary.failed`
 
-// Module is the Schema for the modules API
-type Module struct {
+// BootstrapModule is the Schema for the bootstrapmodules API
+type BootstrapModule struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ModuleSpec   `json:"spec,omitempty"`
-	Status ModuleStatus `json:"status,omitempty"`
+	Spec   BootstrapModuleSpec   `json:"spec,omitempty"`
+	Status BootstrapModuleStatus `json:"status,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 
-// ModuleList contains a list of Module
-type ModuleList struct {
+// BootstrapModuleList contains a list of BootstrapModule
+type BootstrapModuleList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Module `json:"items"`
+	Items           []BootstrapModule `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Module{}, &ModuleList{})
+	SchemeBuilder.Register(&BootstrapModule{}, &BootstrapModuleList{})
 }

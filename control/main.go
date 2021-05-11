@@ -19,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
@@ -36,6 +38,8 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(asmv1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
+	utilruntime.Must(sourcev1.AddToScheme(scheme))
+	utilruntime.Must(kustomv1.AddToScheme(scheme))
 
 	utilruntime.Must(fleetv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
@@ -85,6 +89,14 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Module")
+		os.Exit(1)
+	}
+	if err = (&controllers.BootstrapModuleReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("BootstrapModule"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "BootstrapModule")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder

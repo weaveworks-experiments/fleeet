@@ -1,0 +1,20 @@
+# permissions for end users to view bootstrapmodules.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bootstrapmodule-viewer-role
+rules:
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - bootstrapmodules
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - bootstrapmodules/status
+  verbs:
+  - get

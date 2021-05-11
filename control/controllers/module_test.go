@@ -24,18 +24,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 // makeSync is a convenience for testing, which creates a sync with
 // the given name, git URL, and version tag.
-func makeSync(url, tag string) asmv1.Sync {
-	return asmv1.Sync{
-		Source: asmv1.SourceSpec{
-			Git: &asmv1.GitSource{
+func makeSync(url, tag string) syncapi.Sync {
+	return syncapi.Sync{
+		Source: syncapi.SourceSpec{
+			Git: &syncapi.GitSource{
 				URL: url,
-				Version: asmv1.GitVersion{
+				Version: syncapi.GitVersion{
 					Tag: tag,
 				},
 			},
@@ -160,12 +160,12 @@ var _ = Describe("modules", func() {
 				}, "5s", "1s").Should(BeTrue())
 
 				for _, asm := range asms.Items {
-					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 						Name: "matches",
 						Sync: matchModule.Spec.Sync,
 					}))
 					Expect(asm.GetOwnerReferences()).To(ContainElement(ownerRef(matchModule)))
-					Expect(asm.Spec.Assemblage.Syncs).NotTo(ContainElement(asmv1.NamedSync{
+					Expect(asm.Spec.Assemblage.Syncs).NotTo(ContainElement(syncapi.NamedSync{
 						Name: "nomatch",
 						Sync: nomatchModule.Spec.Sync,
 					}))
@@ -186,7 +186,7 @@ var _ = Describe("modules", func() {
 					}, &newAsm)
 					return err == nil
 				}, "5s", "1s").Should(BeTrue())
-				Expect(newAsm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+				Expect(newAsm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 					Name: matchModule.Name,
 					Sync: matchModule.Spec.Sync,
 				}))
@@ -196,7 +196,7 @@ var _ = Describe("modules", func() {
 				clusterOwnerRef.Controller = &t
 				clusterOwnerRef.BlockOwnerDeletion = &t
 				Expect(newAsm.GetOwnerReferences()).To(ContainElement(clusterOwnerRef))
-				Expect(newAsm.Spec.Assemblage.Syncs).NotTo(ContainElement(asmv1.NamedSync{
+				Expect(newAsm.Spec.Assemblage.Syncs).NotTo(ContainElement(syncapi.NamedSync{
 					Name: nomatchModule.Name,
 					Sync: nomatchModule.Spec.Sync,
 				}))
@@ -221,7 +221,7 @@ var _ = Describe("modules", func() {
 					return err == nil && len(asms.Items) == len(clusters)
 				}, "5s", "1s").Should(BeTrue())
 				for _, asm := range asms.Items {
-					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 						Name: module.Name,
 						Sync: module.Spec.Sync,
 					}))
@@ -287,7 +287,7 @@ var _ = Describe("modules", func() {
 			}, "5s", "1s").Should(BeTrue())
 
 			asm := asms.Items[0]
-			Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(asmv1.NamedSync{
+			Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 				Name: module.Name,
 				Sync: module.Spec.Sync,
 			}))
@@ -296,9 +296,9 @@ var _ = Describe("modules", func() {
 			// and make sure it gets back to the module.
 			syncs := asm.Spec.Assemblage.Syncs
 			for _, s := range syncs {
-				asm.Status.Syncs = append(asm.Status.Syncs, asmv1.SyncStatus{
+				asm.Status.Syncs = append(asm.Status.Syncs, syncapi.SyncStatus{
 					Sync:  s,
-					State: asmv1.StateSucceeded,
+					State: syncapi.StateSucceeded,
 				})
 			}
 			Expect(k8sClient.Status().Update(context.TODO(), &asm)).To(Succeed())

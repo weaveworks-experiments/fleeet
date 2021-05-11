@@ -15,6 +15,8 @@ endif
 # where they go.
 TEST_CRDS:=controllers/testdata/crds
 CAPI_VER=master
+SOURCE_VER ?= v0.9.0
+KUSTOM_VER ?= v0.9.0
 
 all: build
 
@@ -40,13 +42,31 @@ manifests: controller-gen ## Generate WebhookConfiguration, ClusterRole and Cust
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role paths="./..." output:crd:artifacts:config=config/crd/bases
 
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
-	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
+	$(CONTROLLER_GEN) object:headerFile="../hack/boilerplate.go.txt" paths="./..."
 
 fmt: ## Run go fmt against code.
 	go fmt ./...
 
 vet: ## Run go vet against code.
 	go vet ./...
+
+${TEST_CRDS}/gitrepositories.yaml: cache/gitrepositories-${SOURCE_VER}.yaml
+	mkdir -p ${TEST_CRDS}
+	cp $^ $@
+
+cache/gitrepositories-${SOURCE_VER}.yaml:
+	mkdir -p cache
+	curl -s --fail https://raw.githubusercontent.com/fluxcd/source-controller/${SOURCE_VER}/config/crd/bases/source.toolkit.fluxcd.io_gitrepositories.yaml \
+		-o $@
+
+${TEST_CRDS}/kustomizations.yaml: cache/kustomizations-${KUSTOM_VER}.yaml
+	mkdir -p ${TEST_CRDS}
+	cp $^ $@
+
+cache/kustomizations-${KUSTOM_VER}.yaml:
+	mkdir -p cache
+	curl -s --fail https://raw.githubusercontent.com/fluxcd/kustomize-controller/${KUSTOM_VER}/config/crd/bases/kustomize.toolkit.fluxcd.io_kustomizations.yaml \
+		-o $@
 
 ${TEST_CRDS}/clusters.yaml: cache/clusters-${CAPI_VER}.yaml
 	mkdir -p ${TEST_CRDS}
@@ -57,7 +77,7 @@ cache/clusters-${CAPI_VER}.yaml:
 	curl -s --fail https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/${CAPI_VER}/config/crd/bases/cluster.x-k8s.io_clusters.yaml \
 		-o $@
 
-test-deps: ${TEST_CRDS}/clusters.yaml
+test-deps: ${TEST_CRDS}/clusters.yaml ${TEST_CRDS}/gitrepositories.yaml ${TEST_CRDS}/kustomizations.yaml
 .PHONY: test-deps
 
 ENVTEST_ASSETS_DIR=$(shell pwd)/testbin

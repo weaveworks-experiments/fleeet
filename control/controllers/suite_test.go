@@ -22,10 +22,11 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 
 	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
-	fleetv1alpha1 "github.com/squaremo/fleeet/control/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -64,10 +65,10 @@ var _ = BeforeSuite(func() {
 
 	Expect(clusterv1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(asmv1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(sourcev1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(kustomv1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	err = fleetv1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-	err = fleetv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme

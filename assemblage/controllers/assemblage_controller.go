@@ -20,7 +20,9 @@ import (
 
 	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
-	fleetv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 // AssemblageReconciler reconciles a Assemblage object
@@ -40,16 +42,16 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	log := r.Log.WithValues("assemblage", req.NamespacedName)
 
 	// Get the Assemblage in question
-	var asm fleetv1.Assemblage
+	var asm asmv1.Assemblage
 	if err := r.Get(ctx, req.NamespacedName, &asm); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	// For each sync, make sure the correct GitOps Toolkit objects
 	// exist, and collect the status of any that do.
-	var statuses []fleetv1.SyncStatus
+	var statuses []syncapi.SyncStatus
 	for i, sync := range asm.Spec.Syncs {
-		syncStatus := fleetv1.SyncStatus{
+		syncStatus := syncapi.SyncStatus{
 			Sync: sync,
 		}
 
@@ -59,7 +61,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		source.Name = fmt.Sprintf("%s-%d", asm.Name, i) // TODO is the order stable?
 
 		op, err := ctrl.CreateOrUpdate(ctx, r.Client, &source, func() error {
-			if err := populateGitRepositorySpecFromSync(&source.Spec, &sync.Sync); err != nil {
+			if err := syncapi.PopulateGitRepositorySpecFromSync(&source.Spec, &sync.Sync); err != nil {
 				return err
 			}
 			if err := controllerutil.SetControllerReference(&asm, &source, r.Scheme); err != nil {
@@ -77,7 +79,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		case controllerutil.OperationResultCreated,
 			controllerutil.OperationResultUpdated,
 			controllerutil.OperationResultUpdatedStatus:
-			syncStatus.State = fleetv1.StateUpdating
+			syncStatus.State = syncapi.StateUpdating
 		case controllerutil.OperationResultNone:
 			break
 		default:
@@ -92,7 +94,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			kustom.Name = fmt.Sprintf("%s-%d", asm.Name, i)
 
 			op, err := ctrl.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
-				spec, err := kustomizationSpecFromPackage(sync.Package, source.Name)
+				spec, err := syncapi.KustomizationSpecFromPackage(sync.Package, source.Name)
 				if err != nil {
 					return err
 				}
@@ -114,7 +116,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 				case controllerutil.OperationResultNone:
 					syncStatus.State = readyState(&kustom)
 				default:
-					syncStatus.State = fleetv1.StateUpdating
+					syncStatus.State = syncapi.StateUpdating
 				}
 			}
 		default:
@@ -131,57 +133,29 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func readyState(obj meta.ObjectWithStatusConditions) fleetv1.SyncState {
+func readyState(obj meta.ObjectWithStatusConditions) syncapi.SyncState {
 	conditions := obj.GetStatusConditions()
 	c := apimeta.FindStatusCondition(*conditions, meta.ReadyCondition)
 	switch {
 	case c == nil:
-		return fleetv1.StateUpdating
+		return syncapi.StateUpdating
 	case c.Status == metav1.ConditionTrue:
-		return fleetv1.StateSucceeded
+		return syncapi.StateSucceeded
 	case c.Status == metav1.ConditionFalse:
 		if c.Reason == meta.ReconciliationFailedReason {
-			return fleetv1.StateFailed
+			return syncapi.StateFailed
 		} else {
-			return fleetv1.StateUpdating
+			return syncapi.StateUpdating
 		}
 	default: // FIXME possibly StateUnknown?
-		return fleetv1.StateUpdating
+		return syncapi.StateUpdating
 	}
-}
-
-func populateGitRepositorySpecFromSync(dst *sourcev1.GitRepositorySpec, sync *fleetv1.Sync) error {
-	srcSpec := sync.Source.Git
-	dst.URL = srcSpec.URL
-	dst.Interval = metav1.Duration{Duration: time.Minute} // TODO arbitrary
-
-	ref := *dst.Reference
-	if tag := srcSpec.Version.Tag; tag != "" {
-		ref.Tag = tag
-	} else if rev := srcSpec.Version.Revision; rev != "" {
-		ref.Commit = rev
-	} else {
-		return fmt.Errorf("neither tag nor revision given in git source spec")
-	}
-	dst.Reference = &ref
-
-	return nil
-}
-
-func kustomizationSpecFromPackage(pkg *fleetv1.PackageSpec, sourceName string) (kustomv1.KustomizationSpec, error) {
-	var spec kustomv1.KustomizationSpec
-	spec.SourceRef = kustomv1.CrossNamespaceSourceReference{
-		Kind: sourcev1.GitRepositoryKind,
-		Name: sourceName,
-	}
-	spec.Path = pkg.Kustomize.Path
-	return spec, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AssemblageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&fleetv1.Assemblage{}).
+		For(&asmv1.Assemblage{}).
 		Owns(&sourcev1.GitRepository{}).
 		Owns(&kustomv1.Kustomization{}).
 		Complete(r)

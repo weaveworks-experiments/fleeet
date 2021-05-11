@@ -38,6 +38,9 @@ spec:
             properties:
               syncs:
                 items:
+                  description: NamedSync is used when there's a list of syncs, so
+                    the name can be mentioned elsewhere to refer to the particular
+                    sync.
                   properties:
                     name:
                       description: Name gives the sync a name so it can be correlated
