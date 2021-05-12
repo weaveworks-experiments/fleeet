@@ -1,0 +1,46 @@
+name: build
+
+on:
+  pull_request:
+  push:
+    branches:
+    - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: checkout
+      uses: actions/checkout@v2
+    # this runs ssh-agent so that the Docker build can access the private repo
+    - uses: webfactory/ssh-agent@v0.5.2
+      with:
+        ssh-private-key: ${{ secrets.SSH_BUILD_KEY }}
+    # this forces go get to use SSH and therefore the SSH key
+    - run: |
+        git config --global --replace-all url."ssh://git@github.com/".insteadOf https://github.com/
+    - name: Restore go cache
+      uses: actions/cache@v1
+      with:
+        # the ff is mounted into the container as ~/go/pkg/mod
+        path: /home/runner/work/_temp/_github_home/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('control/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Set up kubebuilder
+      uses: fluxcd/pkg/actions/kubebuilder@main
+
+    - name: Setup Docker Buildx
+      id: buildx
+      uses: docker/setup-buildx-action@v1
+      with:
+        install: true
+        buildkitd-flags: "--debug"
+
+    - name: Run tests
+      env:
+        GOPRIVATE: github.com/squaremo/fleeet
+        GOPATH: /home/runner/work/_temp/_github_home/go
+        KUBEBUILDER_ASSETS: ${{ github.workspace }}/kubebuilder/bin
+      run: make -C ./control test docker-build
