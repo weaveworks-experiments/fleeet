@@ -67,6 +67,8 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if err := syncapi.PopulateGitRepositorySpecFromSync(&source.Spec, &mod.Spec.Sync); err != nil {
 			return err
 		}
+		// This is a hack to work around https://github.com/fluxcd/source-controller/issues/315
+		source.Spec.Reference.Branch = "main"
 		return controllerutil.SetControllerReference(&mod, &source, r.Scheme)
 	})
 	if err != nil {
