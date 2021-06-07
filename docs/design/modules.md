@@ -17,6 +17,17 @@ structure to a module -- e.g., dependencies between parts. But I think you would
 with single, versioned piece of configuration when rolling out, so if modules are what you roll out,
 arguably that structure (and complexity) belongs outside modules.
 
+**Why can you specify a revision or tag in a module, but not a branch?**
+
+The purpose of a Module is to define an exact target state for the module. If you gave a branch,
+that would not be exact -- it would imply following the branch HEAD. That means the recovery state
+of your fleet is not well defined, so it is more difficult to roll back, or to audit, past
+configurations.
+
+Admittedly, tags are a grey area, since they can be moved. Allowing tags is a concession to
+practicality for people who want to release configurations via e.g., semver tags. It's not worth
+having another layer just to translate a tag into a revision.
+
 ## Roll out
 
 Modules have a similar idea of "rollout" to Deployments. Unlike Deployments, which create pods to
