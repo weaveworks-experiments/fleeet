@@ -39,7 +39,7 @@ Downsides:
 
 The [ApplicationSet controller](https://argocd-applicationset.readthedocs.io/en/stable/) is an Argo
 labs project which addresses some fleet concerns. The design centre is a mechanism for generating
-Application definitions from a set of generators. Each generators yields either a list of parameter
+Application definitions from a set of generators. Each generator yields either a list of parameter
 replacements (e.g., cluster names), or Application templates (e.g., from directories in a git
 repository), and the controller effectively calculates the product `parameters x templates` to
 produce Application definitions.

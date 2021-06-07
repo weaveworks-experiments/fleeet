@@ -39,6 +39,11 @@ type BootstrapModuleReconciler struct {
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=bootstrapmodules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=bootstrapmodules/finalizers,verbs=update
 
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
+
+//+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;create;update;patch;delete
+
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -67,6 +72,8 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		if err := syncapi.PopulateGitRepositorySpecFromSync(&source.Spec, &mod.Spec.Sync); err != nil {
 			return err
 		}
+		// This is a hack to work around https://github.com/fluxcd/source-controller/issues/315
+		source.Spec.Reference.Branch = "main"
 		return controllerutil.SetControllerReference(&mod, &source, r.Scheme)
 	})
 	if err != nil {
