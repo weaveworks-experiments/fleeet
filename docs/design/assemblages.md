@@ -1,16 +1,16 @@
 <!-- -*- fill-column: 100 -*- -->
 # Assemblages
 
-**Status: implemented**
+**Status: basics implemented**
 
 An Assemblage defines a concrete plan for synchronisation, in aggregate. It is calculated from
 higher level objects (usually in a control plane cluster), and applied by decomposing it into lower
-level sync objects (usually in a worker cluster).
+level sync objects (usually in a workload cluster).
 
 The responsibilities of an Assemblage are:
 
  - be a target of "compilation" for higher-level objects
- - act as a communication channel between control plane and worker clusters
+ - act as a communication channel between control plane and workload clusters
  - define a self-contained, consistent, exactly-versioned composition of configuration
 
 These things are ideally done in the layers _above_ Assemblages:
@@ -27,16 +27,19 @@ want to have this if I think there are different flavours of tying to a cluster,
 directly vs. create this in the downstream and monitor it. The downside is that you now have more
 objects, and it's not clear that deduplicating assemblages is worth the complexity.
 
-**How to deal with secrets**
+## Remote Assemblages
 
-A remote assemblage does not come with secrets; it specifies how to obtain the secrets.
+Assemblages can operate stand-alone in the workload cluster, but their place in the design is to be
+under control of a `RemoteAssemblage`, which acts as a proxy for an assemblage, in the control
+plane.
 
-There will always be some groundwork on a downstream cluster to make secrets readable, whether it's
-supplying a GPG key or assigning IAM roles.
+A `RemoteAssemblage` refers to a specific, remote cluster, and will mirror its syncs into an
+`Assemblage` in the remote cluster. The status of each sync, as collected in the assemblage, is then
+reported back in the remote assemblage.
 
 ## Open questions
 
-Q: What is the simplest, _secure_ way to do this?
+**What is the simplest, _secure_ way to do this?**
 
 The simplest means of provisioning secrets is to create them directly in the downstream cluster. But
 is this insecure, compared to e.g., getting them from the platform (KMS/AWS Secrets Manager)? Could
@@ -46,6 +49,12 @@ the controller would need to be given a key, so ...).
 Stefan says: I think you should consider multi-accounts instead of just multi-az, as most large AWS
 clients can't run into a single account. Reaching the same KMS from multiple accounts is a different
 story to multi-AZ.
+
+**How to deal with secrets**
+
+A remote assemblage does not come with secrets; it specifies how to obtain the secrets. There will
+always be some groundwork on a cluster to make secrets readable, whether it's supplying a GPG key or
+assigning IAM roles.
 
 **How do rollouts work?**
 
