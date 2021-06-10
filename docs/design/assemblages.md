@@ -1,7 +1,7 @@
 <!-- -*- fill-column: 100 -*- -->
 # Assemblages
 
-[uncontroversial]
+**Status: implemented**
 
 An Assemblage defines a concrete plan for synchronisation, in aggregate. It is calculated from
 higher level objects (usually in a control plane cluster), and applied by decomposing it into lower
@@ -19,12 +19,10 @@ These things are ideally done in the layers _above_ Assemblages:
  - figuring out the exact versions for each piece
  - making sure all dependencies are satisfied
 
-[unsure]
-
 An assemblage is particular to a cluster, since it represents an exact constellation of syncs for
 syncing.
 
-An alternative: an assemblage has exact versions, but _another_ object ties it to a cluster. I might
+Alternative: an assemblage has exact versions, but _another_ object ties it to a cluster. I might
 want to have this if I think there are different flavours of tying to a cluster, e.g., sync this
 directly vs. create this in the downstream and monitor it. The downside is that you now have more
 objects, and it's not clear that deduplicating assemblages is worth the complexity.
@@ -35,6 +33,8 @@ A remote assemblage does not come with secrets; it specifies how to obtain the s
 
 There will always be some groundwork on a downstream cluster to make secrets readable, whether it's
 supplying a GPG key or assigning IAM roles.
+
+## Open questions
 
 Q: What is the simplest, _secure_ way to do this?
 

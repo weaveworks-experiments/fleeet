@@ -1,6 +1,8 @@
 <!-- -*- mode: markdown; fill-column: 100 -*- -->
 # Bootstrapping
 
+**Status: under development**
+
 There are two layers on which you need bootstrapping:
 
  1. a Fleeet system on an upstream (management) cluster

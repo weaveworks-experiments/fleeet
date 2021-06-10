@@ -1,6 +1,8 @@
 <!-- -*- fill-column: 100 -*- -->
 # Layering
 
+**Status: implemented**
+
 There are three layers:
 
  - the [assemblage layer][./assemblage.md]
