@@ -1,6 +1,8 @@
 <!-- -*- fill-column: 100 -*- -->
 # Modules
 
+**Status: implemented**
+
 A Module defines a logical unit of synchronisation.
 
 The responsibilities of a Module are:
