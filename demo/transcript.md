@@ -1,6 +1,13 @@
 <!-- fill-column: 100 -->
 # Transcript of creating a Fleeet system
 
+## _0. Adapt kind.config to the local environment_
+
+Edit `demo/kind.config` so that the `apiServerAddress` field has the IP assigned to en0 (or eth0, or
+whichever is your "main" interface). This is so that the clusters created with `kind` will be
+accessible from the control cluster; otherwise, they will listen on localhost and the control
+cluster won't be able to control them.
+
 ## 1. Bootstrap syncing on the management cluster
 
 This will create a self-sustaining sync mechanism on the management cluster. This means I can add
@@ -40,7 +47,7 @@ kpt pkg get https://github.com/kubernetes-sigs/cluster-api.git/config/crd/bases@
 # The following gets the control layer config subdirectory into this repo,
 # keeping track of its origin so it can updated later. Just fetching the files,
 # or using a kustomization with a remote base, could be alternatives.
-kpt pkg get ssh://git@github.com/squaremo/fleeet.git/control/config@bootstrap-demo configs/fleeet-control
+kpt pkg get ssh://git@github.com/squaremo/fleeet.git/control/config@main configs/fleeet-control
 ```
 
 Create syncs that will install the CRDs and controllers:
@@ -81,7 +88,7 @@ mkdir -p configs/flux-worker
 flux install --export --components=kustomize-controller,source-controller > configs/flux-worker/flux-components.yaml
 #
 # Get an assemblage layer (downstream) configuration to sync to downstream clusters
-kpt pkg get ssh://git@github.com/squaremo/fleeet.git/assemblage/config@bootstrap-demo configs/fleeet-worker
+kpt pkg get ssh://git@github.com/squaremo/fleeet.git/assemblage/config@main configs/fleeet-worker
 # Add these to the git repository
 git add configs/{flux-worker,fleeet-worker}
 git commit -s -m "Add downstream bootstrap configs"
@@ -130,7 +137,7 @@ EOF
 #
 # Add it to git, to be synced to the management cluster
 git add upstream/bootstrap-worker.yaml
-git commit -s -m "Add bootstrap module for downstream"
+git commit -s -m "Add bootstrap modules for downstream"
 ```
 
 TODO: a diagram of the situation at this point.
@@ -144,6 +151,13 @@ popd
 # Use the supplied script to create a cluster
 sh create-cluster.sh cluster-1
 ```
+
+See what happened in the downstream cluster:
+
+```bash
+kubectl --kubeconfig ./cluster-1.kubeconfig get namespace
+```
+
 
 ### Create a module
 
@@ -170,4 +184,25 @@ EOF
 git add upstream/podinfo-module.yaml
 git commit -s -m "Add module for podinfo app"
 git push
+```
+
+When flux-system is synced, the module will be created, and a proxy
+set up for each cluster to sync the module:
+
+```bash
+# This shows the module ..
+$ kubectl get module
+NAME      REVISION          TOTAL   UPDATING   SUCCEEDED   FAILED
+podinfo   {"tag":"5.2.0"}   2       2          0           0
+#
+# .. this shows the proxy assemblages
+$ kubectl get remoteassemblage
+NAME        AGE
+cluster-a   4m14s
+cluster-b   4m14s
+#
+# .. and this shows the effect in the downstream cluster
+kubectl --kubeconfig ./cluster-a.kubeconfig get deploy
+NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+podinfo   2/2     2            2           5m17s
 ```
