@@ -1,6 +1,13 @@
 <!-- fill-column: 100 -->
 # Transcript of creating a Fleeet system
 
+## _0. Adapt kind.config to the local environment_
+
+Edit `demo/kind.config` so that the `apiServerAddress` field has the IP assigned to en0 (or eth0, or
+whichever is your "main" interface). This is so that the clusters created with `kind` will be
+accessible from the control cluster; otherwise, they will listen on localhost and the control
+cluster won't be able to control them.
+
 ## 1. Bootstrap syncing on the management cluster
 
 This will create a self-sustaining sync mechanism on the management cluster. This means I can add
