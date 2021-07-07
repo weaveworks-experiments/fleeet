@@ -16,12 +16,12 @@ name="${kubeconfig%.kubeconfig}"
 echo "--> create secret $name-kubeconfig"
 kubectl create secret generic "$name-kubeconfig" --from-file="value=$kubeconfig"
 
-host=$(yq r "kind.config" networking.apiServerAddress)
-port=$(yq r "$kubeconfig" 'clusters[0].cluster.server' | sed 's#https://.*:\([0-9]\{4,5\}\)#\1#')
+host=$(yq eval '.networking.apiServerAddress' "kind.config")
+port=$(yq eval '.clusters[0].cluster.server'"$kubeconfig" | sed 's#https://.*:\([0-9]\{4,5\}\)#\1#')
 
 echo "<!> Using host $host from kind.config apiServerAddress, this is assumed to be"
-echo "    an IP address accessible from other kind nodes. For example, the IP address"
-echo "    assigned to en0 would usually work."
+echo "    an IP address accessible from the control cluster. For example, the IP address"
+echo "    assigned to en0 would usually work if the various hosts are on the same network."
 
 echo "--> writing and applying cluster manifest $name.yaml"
 cat > "$name.yaml" <<EOF
