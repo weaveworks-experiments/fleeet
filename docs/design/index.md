@@ -7,6 +7,7 @@
      to workload clusters
    - [Modules] describes the modules layer, which defines syncs to be
      applied to the fleet of clusters
+ - [Cluster API] describes bootstrapping a Cluster API system
  - [Bootstrap] describes the mechanisms for bootstrapping the control
    plane and workload clusters
  - [Specialisation] describes the mechanism for specialising
@@ -18,6 +19,7 @@
 [Layering]: ./layering.md
 [Assemblages]: ./assemblages.md
 [Modules]: ./modules.md
+[Cluster API]: ./cluster-api.md
 [Bootstrap]: ./bootstrap.md
 [Specialisation]: ./specialisation.md
 [Other designs]: ./other-designs.md
