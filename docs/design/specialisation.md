@@ -106,11 +106,222 @@ In short:
  - you use directives in the module or bootstrap module spec to set environment variables for
    envsubst; these can be
    - a literal value
+   - a data reference for getting a value from a ConfigMap or Secret
    - a field reference for getting a value from the Cluster object representing the workload cluster
    - a field reference for getting a value from an object in the workload cluster
    - (future: a reference to something in a module)
  - the directives are transmitted in the assemblage, and expanded to a `postBuild` section in the
    Kustomization object
+
+### API
+
+#### Bindings and variable mentions
+
+**Syntax for binding and use of names**
+
+Associating a value, or something that will be resolved to a value, to a name --- binding -- is
+separate to using that name. This is to make it easier for names to be used in different
+contexts. For example, instead of:
+
+```yaml
+spec:
+  syncs:
+  - kustomize:
+      substitutions:
+      - name: APP_NAME
+        value: foo
+```
+
+the name is bound in a separate step, then mentioned:
+
+```yaml
+spec:
+  environment:
+  - name: APP_NAME
+    value: foo
+  syncs:
+  - kustomize:
+      substitutions:
+      - APP_NAME: $(APP_NAME)
+```
+
+That way,
+
+ - environment entries could be used in e.g., a Helm values object, and work the same way
+ - environment entries can be bound once then used in more than one context; e.g., in more than one
+   sync
+
+The downside to this is that it can feel like you are repeating yourself, if the destination is also
+something like an environment as above (`APP_NAME: $(APP_NAME)`). Special syntax for mentioning a
+binding may be in order for those situations:
+
+```yaml
+spec:
+  syncs:
+  - kustomize:
+      substitutions:
+      - binding: APP_NAME
+      - name: DEFINED_HERE
+        value: foo
+```
+
+A potential weakness is that the syntax for referring to an environment entry will need to be chosen
+so it doesn't collide with other substitution mechanisms. If you have a module definition that is
+synced by Flux (which is likely, since that's the idea) and envsubst is invoked, it will replace
+`${APP_NAME}` with (probably) an empty string, before it's seen by Fleeet. Kubernetes uses `$(...)`,
+while envsubst as used by Flux uses `${...}`. Provided you can escape a literal `$()`, that will
+work.
+
+**Resolution of binding values**
+
+As above, there are these kinds of binding:
+
+ - a literal value
+ - a specific data value from a ConfigMap or Secret
+ - a reference to a field in an arbitrary resource
+ - a reference to a field in the objects defining the cluster
+ - a reference to a field in a resource in the workload cluster itself
+
+Literal values don't serve a purpose for the user other than reducing the number of places they have
+to repeat a value. However, they may be useful for carrying already-evaluated values to the
+downstream, and for "showing working":
+
+```yaml
+spec:
+  bindings:
+  - name: APP_NAME
+    value: frob
+  - name: APP_NAMESPACE
+    value: $(APP_NAME)-ns
+```
+
+Values in `ConfigMap` and `Secret` objects are just fields under `.data`, so there is no need to
+have a special case for those.
+
+```yaml
+spec:
+  bindings:
+  - name: APP_NAME
+    objectFieldReference:
+      kind: ConfigMap
+      name: app_config
+      path: .data.AppName
+  - name: API_HOST
+    objectFieldReference:
+      kind: Cluster
+      name: $(CLUSTER_NAME)
+      path: .spec.controlPlaneEndpoint.host
+```
+
+If you have the ability to name an object, and you have the name of the target cluster available,
+you can refer to an arbitrary object or to the cluster object (and possibly to another object
+related to the cluster object, if you've been careful in your naming). So one design is to make the
+target cluster name available _a priori_, and let people interpolate into the names of object field
+references:
+
+```yaml
+spec:
+  bindings:
+  - name: APP_NAME
+    objectFieldReference:
+      kind: ConfigMap
+      name: app_config
+      path: .data.AppName
+  - name: API_HOST
+    objectFieldReference:
+      kind: Cluster
+      name: $(CLUSTER_NAME)
+      path: .spec.controlPlaneEndpoint.host
+```
+
+This has the added complexity of having a magic binding, and of needing to interpolate into other
+binding definitions. But it is very flexible.
+
+Alternatively, the cluster definition can be distinguished syntactically:
+
+```yaml
+spec:
+  bindings:
+  - name: APP_NAME
+    objectFieldReference:
+      kind: ConfigMap
+      name: app_config
+      path: .data.AppName
+  - name: API_HOST
+    clusterFieldReference:
+      path: .spec.controlPlaneEndpoint.host
+```
+
+This suffers from being extra syntax, and being very narrow -- how do you refer to some other object
+related to the cluster, for example.
+
+**Upstream vs downstream**
+
+It needs to be specified whether an object to be resolved is in the source cluster or the
+destination cluster; and there is a benefit to this being clear to the user writing or reading a
+spec, as well. Since different types will have one or other or both (e.g., an Assemblage won't have
+upstream bindings), there's a strong indication that bindings should be segregated into separate
+fields entirely.
+
+Indeed, it's easier to implement and to understand as a user if the source cluster bindings are
+obviously evaluated before the target cluster bindings. (I'm sure it is possible technically to find
+a fixed point when anything can refer to anything, but there is less magic if it can't.)
+
+For those reasons, there should be a section for bindings involving upstream objects, and a section
+for bindings involving downstream objects:
+
+```yaml
+spec:
+  upstreamBindings:
+  ...
+  downstreamBindings:
+  ...
+```
+
+or
+
+```yaml
+spec:
+  bindings:
+    upstream:
+    ...
+    downstream:
+```
+
+For consistency, it's better if the same field names are used and are just present or
+absent. Therefore, maybe:
+
+```yaml
+spec:
+   bindings: # evaluated here
+   ...
+   downstreamBindings: # evaluated downstream
+   ...
+```
+
+**Order of evaluation**
+
+One of the examples above assumes that bindings are available when evaluating bindings
+themselves. This choice makes the implementation and comprehension a little more complicated, but
+opens up possibilities for the user.
+
+When do mentions of names outside the bindings get evaluated? Since it's possible to still have
+unreolved bindings in the upstream cluster, this has to happen in the downstream cluster. This means
+you can't have anything that needs to be used in the upstream cluster be a site for interpolation;
+e.g., the selector of a Module cannot use substitutions, and neither can the name of a sync.
+
+Therefore it seems better to selectively allow substitutions; e.g., in certain fields of each sync
+description. Since a module is a _specific_ config at a _specific_ version, the git repository and
+version are probably out, at least to start with. This leaves the `package` field, or specific
+fields therein.
+
+**Interpolation of values**
+
+Since a field value can have an aggregate type (e.g., a list), but variable mentions can be in the
+middle of a value (e.g., `"--app $(app_name)"`) , values will need to be stringified. There's a
+choice of how to stringify values.
+
+TODO
 
 ## How do you do ...?
 
