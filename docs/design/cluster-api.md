@@ -42,3 +42,44 @@ to be made about the ordering; e.g.,
  - is it worth running flux on the temporary cluster
  - do you need to pivot in the cluster API sense if you are going to run flux on the new cluster
  - how do secrets work, as always
+
+## Alternative sequence
+
+The bootstrap cluster is throw-away; it's just to provision the real control cluster, once. So it
+doesn't need Flux there. But we do want to end up with the definitions for the provider(s) in git;
+and, there is the use of git for recovering from a failure in the process.
+
+NB you might want a different set of providers in the control cluster than in the bootstrap cluster.
+
+ 1. Create a repo (if necessary)
+ 2. Create a temporary cluster
+ 3. Put the provider definitions in the repo, and apply them to the cluster (*)
+ 4. Put the control cluster definition in the repo, and apply it
+ 5. Wait for the control cluster to be ready
+ 6. Move the control cluster definition to the control cluster (**)
+ 7. Bootstrap Flux in the control cluster, with the repo already established.
+
+You now have a self-sustaining control cluster.
+
+* This has a kind of transactionality -- you don't want duff configuration in the repo.
+
+** You have to let it be created, then move it, _then_ you can let Flux apply the definition. This
+is because the definition is inherently runtime -- the provider fills in information that is not
+present in the static definition. For it to represent the real cluster, it has to be created during
+bootstrap then moved; applying the static definition would create it again.
+
+## Open questions
+
+**How do cluster moves work when you are going via GitOps?**
+
+They can't work by just applying the definition in a new control cluster; you have to move the
+definition, then you can let it be applied, just as in the note (**) above.
+
+**How often do people need tooling for bootstrapping?**
+
+Bootstrapping the whole thing is kind of a one-off -- is there something you would do more often?
+Perhaps --
+
+ - run a new control cluster and migrate to it
+ - move "independent" clusters under control of a control cluster
+ - do the above bootstrapping but with terraform
