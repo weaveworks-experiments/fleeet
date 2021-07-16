@@ -12,6 +12,12 @@ type Sync struct {
 	// +required
 	Source SourceSpec `json:"source"`
 
+	// Bindings gives a set of variable names that may be used in the
+	// package specification, along with how to obtain a value for
+	// each variable.
+	// +optional
+	Bindings []Binding `json:"bindings,omitempty"`
+
 	// Package defines how to deal with the configuration at the
 	// source, e.g., if it's a kustomization (or YAML files)
 	// +optional

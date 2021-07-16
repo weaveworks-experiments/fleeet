@@ -156,14 +156,6 @@ var _ = Describe("assemblage controller", func() {
 			bindingValue = randomStr("cuttlefacts")
 			asm = asmv1.Assemblage{
 				Spec: asmv1.AssemblageSpec{
-					Bindings: []syncapi.Binding{
-						{
-							Name: "APP_NAME",
-							BindingSource: syncapi.BindingSource{
-								Value: &bindingValue,
-							},
-						},
-					},
 					Syncs: []syncapi.NamedSync{
 						{
 							Name: "app",
@@ -173,6 +165,14 @@ var _ = Describe("assemblage controller", func() {
 										URL: "https://github.com/cuttlefacts-app",
 										Version: syncapi.GitVersion{
 											Revision: "bd6ef78",
+										},
+									},
+								},
+								Bindings: []syncapi.Binding{
+									{
+										Name: "APP_NAME",
+										BindingSource: syncapi.BindingSource{
+											Value: &bindingValue,
 										},
 									},
 								},

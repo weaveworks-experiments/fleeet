@@ -4,9 +4,9 @@ Copyright 2021 Michael Bridgen <mikeb@squaremobius.net>.
 
 package api
 
-// Binding specifies how to bind a value to a name. The name can then
-// be mentioned elsewhere in an object, and be replaced with the value
-// as evaluated.
+// Binding specifies how to obtain a value to bind to a name. The name
+// can then be mentioned elsewhere in an object, and be replaced with
+// the value as evaluated.
 type Binding struct {
 	// +required
 	Name string `json:"name"`

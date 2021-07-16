@@ -36,48 +36,51 @@ spec:
           spec:
             description: AssemblageSpec defines the desired state of Assemblage
             properties:
-              bindings:
-                items:
-                  description: Binding specifies how to bind a value to a name. The
-                    name can then be mentioned elsewhere in an object, and be replaced
-                    with the value as evaluated.
-                  properties:
-                    name:
-                      type: string
-                    objectFieldRef:
-                      properties:
-                        apiVersion:
-                          description: APIVersion gives the APIVersion (<group>/<version>)
-                            for the object's type
-                          type: string
-                        fieldPath:
-                          description: Path is a JSONPointer expression for finding
-                            the value in the object identified
-                          type: string
-                        kind:
-                          description: Kind gives the kind of the object's type
-                          type: string
-                        name:
-                          description: Name names the object
-                          type: string
-                      required:
-                      - fieldPath
-                      - kind
-                      - name
-                      type: object
-                    value:
-                      description: Value supplies a literal value
-                      type: string
-                  required:
-                  - name
-                  type: object
-                type: array
               syncs:
                 items:
                   description: NamedSync is used when there's a list of syncs, so
                     the name can be mentioned elsewhere to refer to the particular
                     sync.
                   properties:
+                    bindings:
+                      description: Bindings gives a set of variable names that may
+                        be used in the package specification, along with how to obtain
+                        a value for each variable.
+                      items:
+                        description: Binding specifies how to obtain a value to bind
+                          to a name. The name can then be mentioned elsewhere in an
+                          object, and be replaced with the value as evaluated.
+                        properties:
+                          name:
+                            type: string
+                          objectFieldRef:
+                            properties:
+                              apiVersion:
+                                description: APIVersion gives the APIVersion (<group>/<version>)
+                                  for the object's type
+                                type: string
+                              fieldPath:
+                                description: Path is a JSONPointer expression for
+                                  finding the value in the object identified
+                                type: string
+                              kind:
+                                description: Kind gives the kind of the object's type
+                                type: string
+                              name:
+                                description: Name names the object
+                                type: string
+                            required:
+                            - fieldPath
+                            - kind
+                            - name
+                            type: object
+                          value:
+                            description: Value supplies a literal value
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type: array
                     name:
                       description: Name gives the sync a name so it can be correlated
                         to the status
@@ -150,6 +153,46 @@ spec:
                     sync:
                       description: Sync gives the last applied sync spec.
                       properties:
+                        bindings:
+                          description: Bindings gives a set of variable names that
+                            may be used in the package specification, along with how
+                            to obtain a value for each variable.
+                          items:
+                            description: Binding specifies how to obtain a value to
+                              bind to a name. The name can then be mentioned elsewhere
+                              in an object, and be replaced with the value as evaluated.
+                            properties:
+                              name:
+                                type: string
+                              objectFieldRef:
+                                properties:
+                                  apiVersion:
+                                    description: APIVersion gives the APIVersion (<group>/<version>)
+                                      for the object's type
+                                    type: string
+                                  fieldPath:
+                                    description: Path is a JSONPointer expression
+                                      for finding the value in the object identified
+                                    type: string
+                                  kind:
+                                    description: Kind gives the kind of the object's
+                                      type
+                                    type: string
+                                  name:
+                                    description: Name names the object
+                                    type: string
+                                required:
+                                - fieldPath
+                                - kind
+                                - name
+                                type: object
+                              value:
+                                description: Value supplies a literal value
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
                         name:
                           description: Name gives the sync a name so it can be correlated
                             to the status

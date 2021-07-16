@@ -48,9 +48,6 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// This will be used to evaluate variable mentions in the syncs.
-	bindingFunc := r.bindingFunc(asm.Spec.Bindings)
-
 	// For each sync, make sure the correct GitOps Toolkit objects
 	// exist, and collect the status of any that do.
 	var statuses []syncapi.SyncStatus
@@ -63,6 +60,9 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		var source sourcev1.GitRepository
 		source.Namespace = asm.Namespace
 		source.Name = fmt.Sprintf("%s-%d", asm.Name, i) // TODO is the order stable?
+
+		// This will be used to evaluate variable mentions in the sync.
+		bindingFunc := r.bindingFunc(sync.Bindings)
 
 		op, err := ctrl.CreateOrUpdate(ctx, r.Client, &source, func() error {
 			if err := syncapi.PopulateGitRepositorySpecFromSync(&source.Spec, &sync.Sync); err != nil {

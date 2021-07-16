@@ -179,6 +179,13 @@ func (in *SourceSpec) DeepCopy() *SourceSpec {
 func (in *Sync) DeepCopyInto(out *Sync) {
 	*out = *in
 	in.Source.DeepCopyInto(&out.Source)
+	if in.Bindings != nil {
+		in, out := &in.Bindings, &out.Bindings
+		*out = make([]Binding, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.Package != nil {
 		in, out := &in.Package, &out.Package
 		*out = new(PackageSpec)
