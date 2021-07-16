@@ -144,4 +144,78 @@ var _ = Describe("assemblage controller", func() {
 		}, "5s", "1s").Should(BeTrue())
 		Expect(kustom.Spec.Path).To(Equal(asm.Spec.Syncs[0].Package.Kustomize.Path))
 	})
+
+	Context("bindings", func() {
+
+		var (
+			asm          asmv1.Assemblage
+			bindingValue string
+		)
+
+		BeforeEach(func() {
+			bindingValue = randomStr("cuttlefacts")
+			asm = asmv1.Assemblage{
+				Spec: asmv1.AssemblageSpec{
+					Bindings: []syncapi.Binding{
+						{
+							Name: "APP_NAME",
+							BindingSource: syncapi.BindingSource{
+								Value: &bindingValue,
+							},
+						},
+					},
+					Syncs: []syncapi.NamedSync{
+						{
+							Name: "app",
+							Sync: syncapi.Sync{
+								Source: syncapi.SourceSpec{
+									Git: &syncapi.GitSource{
+										URL: "https://github.com/cuttlefacts-app",
+										Version: syncapi.GitVersion{
+											Revision: "bd6ef78",
+										},
+									},
+								},
+								Package: &syncapi.PackageSpec{
+									Kustomize: &syncapi.KustomizeSpec{
+										Path: "deploy",
+										Substitute: map[string]string{
+											"APP_NAME": "foo $(APP_NAME)",
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			asm.Name = randomStr("asm")
+			asm.Namespace = namespace.Name
+			Expect(k8sClient.Create(context.TODO(), &asm)).To(Succeed())
+		})
+
+		AfterEach(func() {
+			Expect(k8sClient.Delete(context.TODO(), &asm)).To(Succeed())
+		})
+
+		It("adds the substitution to the kustomization", func() {
+			expectedKustomizationName := types.NamespacedName{
+				Name:      asm.Name + "-0",
+				Namespace: asm.Namespace,
+			}
+			var kustom kustomv1.Kustomization
+			Eventually(func() bool {
+				if err := k8sClient.Get(context.Background(), expectedKustomizationName, &kustom); err != nil {
+					return false
+				}
+				return kustom.Name == expectedKustomizationName.Name
+			}, "5s", "1s").Should(BeTrue())
+			Expect(kustom.Spec.Path).To(Equal(asm.Spec.Syncs[0].Package.Kustomize.Path))
+			Expect(kustom.Spec.PostBuild).ToNot(BeNil())
+			postbuild := kustom.Spec.PostBuild
+			Expect(postbuild.Substitute).To(Equal(map[string]string{
+				"APP_NAME": "foo " + bindingValue,
+			}))
+		})
+	})
 })

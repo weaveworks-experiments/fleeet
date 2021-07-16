@@ -48,6 +48,9 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// This will be used to evaluate variable mentions in the syncs.
+	bindingFunc := r.bindingFunc(asm.Spec.Bindings)
+
 	// For each sync, make sure the correct GitOps Toolkit objects
 	// exist, and collect the status of any that do.
 	var statuses []syncapi.SyncStatus
@@ -95,7 +98,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			kustom.Name = fmt.Sprintf("%s-%d", asm.Name, i)
 
 			op, err := ctrl.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
-				spec, err := syncapi.KustomizationSpecFromPackage(sync.Package, source.Name)
+				spec, err := syncapi.KustomizationSpecFromPackage(sync.Package, source.Name, bindingFunc)
 				if err != nil {
 					return err
 				}
@@ -150,6 +153,33 @@ func readyState(obj meta.ObjectWithStatusConditions) syncapi.SyncState {
 		}
 	default: // FIXME possibly StateUnknown?
 		return syncapi.StateUpdating
+	}
+}
+
+func (r *AssemblageReconciler) bindingFunc(bindings []syncapi.Binding) func(string) string {
+	memo := map[string]string{}
+	return func(name string) string {
+		if v, ok := memo[name]; ok {
+			return v
+		}
+		for _, b := range bindings {
+			if b.Name == name {
+				v := r.resolveBinding(b)
+				memo[name] = v
+				return v
+			}
+		}
+		memo[name] = ""
+		return ""
+	}
+}
+
+func (r *AssemblageReconciler) resolveBinding(b syncapi.Binding) string {
+	switch {
+	case b.BindingSource.Value != nil:
+		return *b.BindingSource.Value
+	default:
+		return ""
 	}
 }
 

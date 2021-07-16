@@ -12,6 +12,8 @@ import (
 
 // AssemblageSpec defines the desired state of Assemblage
 type AssemblageSpec struct {
+	// +optional
+	Bindings []syncapi.Binding `json:"bindings,omitempty"`
 	// +required
 	Syncs []syncapi.NamedSync `json:"syncs"`
 }

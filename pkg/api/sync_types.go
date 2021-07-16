@@ -65,6 +65,10 @@ type KustomizeSpec struct {
 	// +optional
 	// +kubebuilder:default=.
 	Path string `json:"path,omitempty"`
+	// Substitute gives a map of names to values to substitute in the
+	// YAML built from the kustomization.
+	// +optional
+	Substitute map[string]string `json:"substitute,omitempty"`
 }
 
 type SyncState string

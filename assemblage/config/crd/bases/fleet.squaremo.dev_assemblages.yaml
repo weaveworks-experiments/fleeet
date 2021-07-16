@@ -36,6 +36,42 @@ spec:
           spec:
             description: AssemblageSpec defines the desired state of Assemblage
             properties:
+              bindings:
+                items:
+                  description: Binding specifies how to bind a value to a name. The
+                    name can then be mentioned elsewhere in an object, and be replaced
+                    with the value as evaluated.
+                  properties:
+                    name:
+                      type: string
+                    objectFieldRef:
+                      properties:
+                        apiVersion:
+                          description: APIVersion gives the APIVersion (<group>/<version>)
+                            for the object's type
+                          type: string
+                        fieldPath:
+                          description: Path is a JSONPointer expression for finding
+                            the value in the object identified
+                          type: string
+                        kind:
+                          description: Kind gives the kind of the object's type
+                          type: string
+                        name:
+                          description: Name names the object
+                          type: string
+                      required:
+                      - fieldPath
+                      - kind
+                      - name
+                      type: object
+                    value:
+                      description: Value supplies a literal value
+                      type: string
+                  required:
+                  - name
+                  type: object
+                type: array
               syncs:
                 items:
                   description: NamedSync is used when there's a list of syncs, so
@@ -60,6 +96,12 @@ spec:
                               description: Path gives the path within the source to
                                 treat as the Kustomization root.
                               type: string
+                            substitute:
+                              additionalProperties:
+                                type: string
+                              description: Substitute gives a map of names to values
+                                to substitute in the YAML built from the kustomization.
+                              type: object
                           type: object
                       type: object
                     source:
@@ -127,6 +169,13 @@ spec:
                                   description: Path gives the path within the source
                                     to treat as the Kustomization root.
                                   type: string
+                                substitute:
+                                  additionalProperties:
+                                    type: string
+                                  description: Substitute gives a map of names to
+                                    values to substitute in the YAML built from the
+                                    kustomization.
+                                  type: object
                               type: object
                           type: object
                         source:
