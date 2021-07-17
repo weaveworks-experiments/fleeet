@@ -180,10 +180,11 @@ var _ = Describe("assemblage controller", func() {
 										Name: "REVISION",
 										BindingSource: syncapi.BindingSource{
 											ObjectFieldRef: &syncapi.ObjectFieldSelector{
+												APIVersion: "fleet.squaremo.dev/v1alpha1",
 												// refer to this object, not to be cleverly self-referential -- just because it's known to exist
 												Kind:      "Assemblage",
 												Name:      asmName,
-												FieldPath: ".spec.syncs[0].source.git.version.revision",
+												FieldPath: "/spec/syncs/0/source/git/version/revision",
 											},
 										},
 									},
@@ -192,7 +193,7 @@ var _ = Describe("assemblage controller", func() {
 									Kustomize: &syncapi.KustomizeSpec{
 										Path: "deploy",
 										Substitute: map[string]string{
-											"APP_NAME": "foo $(APP_NAME)",
+											"APP_NAME": "app:$(APP_NAME)",
 											"REVISION": "sha1:$(REVISION)",
 										},
 									},
@@ -227,7 +228,7 @@ var _ = Describe("assemblage controller", func() {
 			Expect(kustom.Spec.PostBuild).ToNot(BeNil())
 			postbuild := kustom.Spec.PostBuild
 			Expect(postbuild.Substitute).To(Equal(map[string]string{
-				"APP_NAME": "foo " + bindingValue,
+				"APP_NAME": "app:" + bindingValue,
 				"REVISION": "sha1:bd6ef78",
 			}))
 		})
