@@ -154,6 +154,7 @@ var _ = Describe("assemblage controller", func() {
 
 		BeforeEach(func() {
 			bindingValue = randomStr("cuttlefacts")
+			asmName := randomStr("asm")
 			asm = asmv1.Assemblage{
 				Spec: asmv1.AssemblageSpec{
 					Syncs: []syncapi.NamedSync{
@@ -175,12 +176,24 @@ var _ = Describe("assemblage controller", func() {
 											Value: &bindingValue,
 										},
 									},
+									{
+										Name: "REVISION",
+										BindingSource: syncapi.BindingSource{
+											ObjectFieldRef: &syncapi.ObjectFieldSelector{
+												// refer to this object, not to be cleverly self-referential -- just because it's known to exist
+												Kind:      "Assemblage",
+												Name:      asmName,
+												FieldPath: ".spec.syncs[0].source.git.version.revision",
+											},
+										},
+									},
 								},
 								Package: &syncapi.PackageSpec{
 									Kustomize: &syncapi.KustomizeSpec{
 										Path: "deploy",
 										Substitute: map[string]string{
 											"APP_NAME": "foo $(APP_NAME)",
+											"REVISION": "sha1:$(REVISION)",
 										},
 									},
 								},
@@ -189,7 +202,7 @@ var _ = Describe("assemblage controller", func() {
 					},
 				},
 			}
-			asm.Name = randomStr("asm")
+			asm.Name = asmName
 			asm.Namespace = namespace.Name
 			Expect(k8sClient.Create(context.TODO(), &asm)).To(Succeed())
 		})
@@ -198,7 +211,7 @@ var _ = Describe("assemblage controller", func() {
 			Expect(k8sClient.Delete(context.TODO(), &asm)).To(Succeed())
 		})
 
-		It("adds the substitution to the kustomization", func() {
+		It("adds a substitution stanza to the kustomization", func() {
 			expectedKustomizationName := types.NamespacedName{
 				Name:      asm.Name + "-0",
 				Namespace: asm.Namespace,
@@ -215,6 +228,7 @@ var _ = Describe("assemblage controller", func() {
 			postbuild := kustom.Spec.PostBuild
 			Expect(postbuild.Substitute).To(Equal(map[string]string{
 				"APP_NAME": "foo " + bindingValue,
+				"REVISION": "sha1:bd6ef78",
 			}))
 		})
 	})
