@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -10,49 +11,50 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func ResolveBinding(client client.Client, b Binding) string {
+var ErrUnknownBindingForm = errors.New("unknown binding form")
+
+// ResolveBinding finds a value given the specification of a
+// binding. It expects a `client.Client` limited to the namespace of
+// the owning object.
+func ResolveBinding(ctx context.Context, client client.Client, b Binding) (string, error) {
 	switch {
 	case b.BindingSource.Value != nil:
-		return *b.BindingSource.Value
+		return *b.BindingSource.Value, nil
 	case b.ObjectFieldRef != nil:
-		obj, err := getArbitraryObject(client, b.ObjectFieldRef)
+		obj, err := getArbitraryObject(ctx, client, b.ObjectFieldRef)
 		if err != nil {
-			println("[DEBUG]", err.Error())
-			return ""
+			return "", err
 		}
 		return evalFieldPath(obj.Object, b.ObjectFieldRef.FieldPath)
 	default:
-		return ""
+		return "", ErrUnknownBindingForm
 	}
 }
 
-func getArbitraryObject(c client.Client, ref *ObjectFieldSelector) (unstructured.Unstructured, error) {
+func getArbitraryObject(ctx context.Context, c client.Client, ref *ObjectFieldSelector) (unstructured.Unstructured, error) {
 	obj := unstructured.Unstructured{}
 	obj.SetAPIVersion(ref.APIVersion)
 	obj.SetKind(ref.Kind)
-	// FIXME Namespace? Perhaps pass a namespaced client.
-	err := c.Get(context.TODO(), client.ObjectKey{
+	err := c.Get(ctx, client.ObjectKey{
 		Name: ref.Name,
 	}, &obj)
 	return obj, err
 }
 
-func evalFieldPath(obj map[string]interface{}, path string) string {
+func evalFieldPath(obj map[string]interface{}, path string) (string, error) {
 	ptr, err := jsonpointer.New(path)
 	if err != nil {
-		println("[DEBUG]", err.Error())
-		return ""
+		return "", err
 	}
 	val, kind, err := ptr.Get(obj)
 	if err != nil {
-		println("[DEBUG]", err.Error())
-		return ""
+		return "", err
 	}
 	switch kind {
 	case reflect.String:
-		return val.(string)
+		return val.(string), nil
 	default:
 		// FIXME more cases, or at least be principled here ...
-		return fmt.Sprintf("%v", val)
+		return fmt.Sprintf("%v", val), nil
 	}
 }

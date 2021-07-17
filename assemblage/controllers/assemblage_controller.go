@@ -62,7 +62,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		source.Name = fmt.Sprintf("%s-%d", asm.Name, i) // TODO is the order stable?
 
 		// This will be used to evaluate variable mentions in the sync.
-		bindingFunc := r.bindingFunc(sync.Bindings)
+		bindingFunc := r.bindingFunc(ctx, log, asm.Namespace, sync.Bindings)
 
 		op, err := ctrl.CreateOrUpdate(ctx, r.Client, &source, func() error {
 			if err := syncapi.PopulateGitRepositorySpecFromSync(&source.Spec, &sync.Sync); err != nil {
@@ -156,7 +156,7 @@ func readyState(obj meta.ObjectWithStatusConditions) syncapi.SyncState {
 	}
 }
 
-func (r *AssemblageReconciler) bindingFunc(bindings []syncapi.Binding) func(string) string {
+func (r *AssemblageReconciler) bindingFunc(ctx context.Context, log logr.Logger, namespace string, bindings []syncapi.Binding) func(string) string {
 	memo := map[string]string{}
 	return func(name string) string {
 		if v, ok := memo[name]; ok {
@@ -164,21 +164,16 @@ func (r *AssemblageReconciler) bindingFunc(bindings []syncapi.Binding) func(stri
 		}
 		for _, b := range bindings {
 			if b.Name == name {
-				v := r.resolveBinding(b)
+				v, err := syncapi.ResolveBinding(ctx, client.NewNamespacedClient(r.Client, namespace), b)
+				if err != nil {
+					log.Info("warning: unable to resolve binding; using empty string", "name", b.Name, "error", err)
+					v = ""
+				}
 				memo[name] = v
 				return v
 			}
 		}
 		memo[name] = ""
-		return ""
-	}
-}
-
-func (r *AssemblageReconciler) resolveBinding(b syncapi.Binding) string {
-	switch {
-	case b.BindingSource.Value != nil:
-		return *b.BindingSource.Value
-	default:
 		return ""
 	}
 }

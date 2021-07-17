@@ -2,7 +2,7 @@ module github.com/squaremo/fleeet/assemblage
 
 go 1.15
 
-replace "github.com/squaremo/fleeet/pkg" => ../pkg
+replace github.com/squaremo/fleeet/pkg => ../pkg
 
 require (
 	github.com/fluxcd/kustomize-controller/api v0.12.0
