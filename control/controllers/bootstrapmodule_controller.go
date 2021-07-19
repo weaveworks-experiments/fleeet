@@ -95,12 +95,36 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to list selected clusters: %w", err)
 	}
 
-	kustomSpec, err := syncapi.KustomizationSpecFromPackage(mod.Spec.Sync.Package, source.GetName())
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
+	namespacedClient := client.NewNamespacedClient(r.Client, mod.Namespace)
 	for _, cluster := range clusters.Items {
+		// start with CLUSTER_NAME available to use in bindings
+		memo := map[string]string{
+			"CLUSTER_NAME": cluster.Name,
+		}
+
+		bindingFunc := func(name string) string {
+			if v, ok := memo[name]; ok {
+				return v
+			}
+			for _, b := range mod.Spec.ControlPlaneBindings {
+				if b.Name == name {
+					v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, memo)
+					if err != nil {
+						log.Info("warning: unable to resolve binding; using empty string", "name", b.Name, "error", err)
+						v = ""
+					}
+					memo[name] = v
+					return v
+				}
+			}
+			memo[name] = ""
+			return ""
+		}
+		kustomSpec, err := syncapi.KustomizationSpecFromPackage(mod.Spec.Sync.Package, source.GetName(), bindingFunc)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
 		var kustom kustomv1.Kustomization
 		kustom.Namespace = mod.GetNamespace()
 		kustom.Name = fmt.Sprintf("%s-%s", mod.GetName(), cluster.GetName())

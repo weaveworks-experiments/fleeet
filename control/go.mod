@@ -2,6 +2,8 @@ module github.com/squaremo/fleeet/control
 
 go 1.15
 
+replace github.com/squaremo/fleeet/pkg => ../pkg
+
 require (
 	github.com/fluxcd/kustomize-controller/api v0.12.0
 	github.com/fluxcd/pkg/apis/meta v0.9.0

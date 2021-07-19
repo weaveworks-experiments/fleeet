@@ -162,12 +162,21 @@ var _ = Describe("assemblage controller", func() {
 							Name: "app",
 							Bindings: []syncapi.Binding{
 								{
+									// value binding
 									Name: "APP_NAME",
 									BindingSource: syncapi.BindingSource{
 										Value: &syncapi.Value{String: bindingValue},
 									},
 								},
 								{
+									// depends on the previous binding
+									Name: "APP_NAME_PLUS",
+									BindingSource: syncapi.BindingSource{
+										Value: &syncapi.Value{String: "$(APP_NAME)+"},
+									},
+								},
+								{
+									// get a value from an object
 									Name: "REVISION",
 									BindingSource: syncapi.BindingSource{
 										ObjectFieldRef: &syncapi.ObjectFieldSelector{
@@ -180,9 +189,24 @@ var _ = Describe("assemblage controller", func() {
 									},
 								},
 								{
-									Name: "APP_NAME_PLUS",
+									// value binding _not_ mentioned directly in the package
+									Name: "PORT",
 									BindingSource: syncapi.BindingSource{
-										Value: &syncapi.Value{String: "$(APP_NAME)+"},
+										Value: &syncapi.Value{String: "3030"},
+									},
+								},
+								{
+									// value binding _not_ mentioned directly in the package
+									Name: "HOST",
+									BindingSource: syncapi.BindingSource{
+										Value: &syncapi.Value{String: "0.0.0.0"},
+									},
+								},
+								{
+									// depends on the previous, otherwise unused bindings
+									Name: "HOSTPORT",
+									BindingSource: syncapi.BindingSource{
+										Value: &syncapi.Value{String: "$(HOST):$(PORT)"},
 									},
 								},
 							},
@@ -202,6 +226,7 @@ var _ = Describe("assemblage controller", func() {
 											"APP_NAME": "app:$(APP_NAME)",
 											"REVISION": "sha1:$(REVISION)",
 											"PLUS":     "$(APP_NAME_PLUS)",
+											"HOSTPORT": "$(HOSTPORT)",
 										},
 									},
 								},
@@ -238,6 +263,7 @@ var _ = Describe("assemblage controller", func() {
 				"APP_NAME": "app:" + bindingValue,
 				"REVISION": "sha1:bd6ef78",
 				"PLUS":     bindingValue + "+",
+				"HOSTPORT": "0.0.0.0:3030",
 			}))
 		})
 	})

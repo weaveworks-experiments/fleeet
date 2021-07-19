@@ -18,19 +18,18 @@ var ErrUnknownBindingForm = errors.New("unknown binding form")
 // ResolveBinding finds a value given the specification of a
 // binding. It expects a `client.Client` limited to the namespace of
 // the owning object.
-func ResolveBinding(ctx context.Context, client client.Client, b Binding, resolved map[string]string) (string, error) {
+func ResolveBinding(ctx context.Context, client client.Client, b Binding, resolve func(string) string) (string, error) {
 	switch {
 	case b.BindingSource.Value != nil:
 		s := b.BindingSource.Value.String
-		s = expansion.Expand(s, expansion.MappingFuncFor(resolved))
+		s = expansion.Expand(s, resolve)
 		return s, nil
 	case b.ObjectFieldRef != nil:
 		ref := *b.ObjectFieldRef
-		mapping := expansion.MappingFuncFor(resolved)
-		ref.APIVersion = expansion.Expand(ref.APIVersion, mapping)
-		ref.Kind = expansion.Expand(ref.Kind, mapping)
-		ref.Name = expansion.Expand(ref.Name, mapping)
-		ref.FieldPath = expansion.Expand(ref.FieldPath, mapping)
+		ref.APIVersion = expansion.Expand(ref.APIVersion, resolve)
+		ref.Kind = expansion.Expand(ref.Kind, resolve)
+		ref.Name = expansion.Expand(ref.Name, resolve)
+		ref.FieldPath = expansion.Expand(ref.FieldPath, resolve)
 		obj, err := getArbitraryObject(ctx, client, &ref)
 		if err != nil {
 			return "", err

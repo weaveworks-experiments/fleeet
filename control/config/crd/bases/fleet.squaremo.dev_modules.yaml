@@ -115,6 +115,12 @@ spec:
                             description: Path gives the path within the source to
                               treat as the Kustomization root.
                             type: string
+                          substitute:
+                            additionalProperties:
+                              type: string
+                            description: Substitute gives a map of names to values
+                              to substitute in the YAML built from the kustomization.
+                            type: object
                         type: object
                     type: object
                   source:
@@ -169,6 +175,12 @@ spec:
                             description: Path gives the path within the source to
                               treat as the Kustomization root.
                             type: string
+                          substitute:
+                            additionalProperties:
+                              type: string
+                            description: Substitute gives a map of names to values
+                              to substitute in the YAML built from the kustomization.
+                            type: object
                         type: object
                     type: object
                   source:

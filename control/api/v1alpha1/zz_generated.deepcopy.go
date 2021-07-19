@@ -81,6 +81,13 @@ func (in *BootstrapModuleSpec) DeepCopyInto(out *BootstrapModuleSpec) {
 		*out = new(v1.LabelSelector)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.ControlPlaneBindings != nil {
+		in, out := &in.ControlPlaneBindings, &out.ControlPlaneBindings
+		*out = make([]api.Binding, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	in.Sync.DeepCopyInto(&out.Sync)
 }
 
