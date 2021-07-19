@@ -164,7 +164,7 @@ func (r *AssemblageReconciler) bindingFunc(ctx context.Context, log logr.Logger,
 		}
 		for _, b := range bindings {
 			if b.Name == name {
-				v, err := syncapi.ResolveBinding(ctx, client.NewNamespacedClient(r.Client, namespace), b)
+				v, err := syncapi.ResolveBinding(ctx, client.NewNamespacedClient(r.Client, namespace), b, memo)
 				if err != nil {
 					log.Info("warning: unable to resolve binding; using empty string", "name", b.Name, "error", err)
 					v = ""
