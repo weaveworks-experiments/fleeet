@@ -160,6 +160,32 @@ var _ = Describe("assemblage controller", func() {
 					Syncs: []syncapi.NamedSync{
 						{
 							Name: "app",
+							Bindings: []syncapi.Binding{
+								{
+									Name: "APP_NAME",
+									BindingSource: syncapi.BindingSource{
+										Value: &syncapi.Value{String: bindingValue},
+									},
+								},
+								{
+									Name: "REVISION",
+									BindingSource: syncapi.BindingSource{
+										ObjectFieldRef: &syncapi.ObjectFieldSelector{
+											APIVersion: "fleet.squaremo.dev/v1alpha1",
+											// refer to this object, not to be cleverly self-referential -- just because it's known to exist
+											Kind:      "Assemblage",
+											Name:      asmName,
+											FieldPath: "/spec/syncs/0/source/git/version/revision",
+										},
+									},
+								},
+								{
+									Name: "APP_NAME_PLUS",
+									BindingSource: syncapi.BindingSource{
+										Value: &syncapi.Value{String: "$(APP_NAME)+"},
+									},
+								},
+							},
 							Sync: syncapi.Sync{
 								Source: syncapi.SourceSpec{
 									Git: &syncapi.GitSource{
@@ -169,32 +195,13 @@ var _ = Describe("assemblage controller", func() {
 										},
 									},
 								},
-								Bindings: []syncapi.Binding{
-									{
-										Name: "APP_NAME",
-										BindingSource: syncapi.BindingSource{
-											Value: &bindingValue,
-										},
-									},
-									{
-										Name: "REVISION",
-										BindingSource: syncapi.BindingSource{
-											ObjectFieldRef: &syncapi.ObjectFieldSelector{
-												APIVersion: "fleet.squaremo.dev/v1alpha1",
-												// refer to this object, not to be cleverly self-referential -- just because it's known to exist
-												Kind:      "Assemblage",
-												Name:      asmName,
-												FieldPath: "/spec/syncs/0/source/git/version/revision",
-											},
-										},
-									},
-								},
 								Package: &syncapi.PackageSpec{
 									Kustomize: &syncapi.KustomizeSpec{
 										Path: "deploy",
 										Substitute: map[string]string{
 											"APP_NAME": "app:$(APP_NAME)",
 											"REVISION": "sha1:$(REVISION)",
+											"PLUS":     "$(APP_NAME_PLUS)",
 										},
 									},
 								},
@@ -230,6 +237,7 @@ var _ = Describe("assemblage controller", func() {
 			Expect(postbuild.Substitute).To(Equal(map[string]string{
 				"APP_NAME": "app:" + bindingValue,
 				"REVISION": "sha1:bd6ef78",
+				"PLUS":     bindingValue + "+",
 			}))
 		})
 	})

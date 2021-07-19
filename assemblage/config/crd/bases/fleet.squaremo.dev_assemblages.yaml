@@ -43,9 +43,6 @@ spec:
                     sync.
                   properties:
                     bindings:
-                      description: Bindings gives a set of variable names that may
-                        be used in the package specification, along with how to obtain
-                        a value for each variable.
                       items:
                         description: Binding specifies how to obtain a value to bind
                           to a name. The name can then be mentioned elsewhere in an
@@ -76,7 +73,12 @@ spec:
                             type: object
                           value:
                             description: Value supplies a literal value
-                            type: string
+                            properties:
+                              string:
+                                type: string
+                            required:
+                            - string
+                            type: object
                         required:
                         - name
                         type: object
@@ -154,9 +156,6 @@ spec:
                       description: Sync gives the last applied sync spec.
                       properties:
                         bindings:
-                          description: Bindings gives a set of variable names that
-                            may be used in the package specification, along with how
-                            to obtain a value for each variable.
                           items:
                             description: Binding specifies how to obtain a value to
                               bind to a name. The name can then be mentioned elsewhere
@@ -188,7 +187,12 @@ spec:
                                 type: object
                               value:
                                 description: Value supplies a literal value
-                                type: string
+                                properties:
+                                  string:
+                                    type: string
+                                required:
+                                - string
+                                type: object
                             required:
                             - name
                             type: object

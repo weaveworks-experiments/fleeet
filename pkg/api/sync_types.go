@@ -12,12 +12,6 @@ type Sync struct {
 	// +required
 	Source SourceSpec `json:"source"`
 
-	// Bindings gives a set of variable names that may be used in the
-	// package specification, along with how to obtain a value for
-	// each variable.
-	// +optional
-	Bindings []Binding `json:"bindings,omitempty"`
-
 	// Package defines how to deal with the configuration at the
 	// source, e.g., if it's a kustomization (or YAML files)
 	// +optional
@@ -30,8 +24,9 @@ type Sync struct {
 type NamedSync struct {
 	// Name gives the sync a name so it can be correlated to the status
 	// +required
-	Name string `json:"name"`
-	Sync `json:",inline"`
+	Name     string    `json:"name"`
+	Bindings []Binding `json:"bindings,omitempty"`
+	Sync     `json:",inline"`
 }
 
 // SourceSpec gives the details for the source, i.e., from where to
