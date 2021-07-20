@@ -102,27 +102,42 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			"CLUSTER_NAME": cluster.Name,
 		}
 
-		bindingFunc := func(name string) string {
-			if v, ok := memo[name]; ok {
-				return v
-			}
-			for _, b := range mod.Spec.ControlPlaneBindings {
-				if b.Name == name {
-					v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, memo)
-					if err != nil {
-						log.Info("warning: unable to resolve binding; using empty string", "name", b.Name, "error", err)
-						v = ""
+		var bindingErr error
+		var makeBindingFunc func(stack []string) func(string) string
+		makeBindingFunc = func(stack []string) func(string) string {
+			return func(name string) string {
+				for i := range stack {
+					if stack[i] == name {
+						bindingErr = fmt.Errorf("circular binding %q", name)
+						return ""
 					}
-					memo[name] = v
+				}
+
+				if v, ok := memo[name]; ok {
 					return v
 				}
+				for _, b := range mod.Spec.ControlPlaneBindings {
+					if b.Name == name {
+						v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, makeBindingFunc(append(stack, name)))
+						if err != nil {
+							bindingErr = err
+							v = ""
+						}
+						memo[name] = v
+						return v
+					}
+				}
+				memo[name] = ""
+				return ""
 			}
-			memo[name] = ""
-			return ""
 		}
-		kustomSpec, err := syncapi.KustomizationSpecFromPackage(mod.Spec.Sync.Package, source.GetName(), bindingFunc)
+
+		kustomSpec, err := syncapi.KustomizationSpecFromPackage(mod.Spec.Sync.Package, source.GetName(), makeBindingFunc(nil))
 		if err != nil {
 			return ctrl.Result{}, err
+		}
+		if bindingErr != nil {
+			return ctrl.Result{}, bindingErr
 		}
 
 		var kustom kustomv1.Kustomization
