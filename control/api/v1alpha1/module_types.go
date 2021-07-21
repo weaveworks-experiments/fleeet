@@ -20,9 +20,21 @@ type ModuleSpec struct {
 	// +optional
 	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 
+	// ControlPlaneBindings gives bindings to evaluate in the control
+	// plane, i.e., before the sync is "sent" to each worker
+	// cluster.
+	ControlPlaneBindings []syncapi.Binding `json:"controlPlaneBindings,omitempty"`
+
 	// Sync gives the configuration to sync on assigned clusters.
 	// +required
-	Sync syncapi.Sync `json:"sync"`
+	Sync SyncWithBindings `json:"sync"`
+}
+
+// SyncWithBindings is a pairing of a sync (source and package) with
+// bindings that will be evaluated in the target cluster.
+type SyncWithBindings struct {
+	Bindings     []syncapi.Binding `json:"bindings,omitempty"`
+	syncapi.Sync `json:",inline"`
 }
 
 // ModuleStatus defines the observed state of Module

@@ -30,17 +30,19 @@ import (
 
 // makeSync is a convenience for testing, which creates a sync with
 // the given name, git URL, and version tag.
-func makeSync(url, tag string) syncapi.Sync {
-	return syncapi.Sync{
-		Source: syncapi.SourceSpec{
-			Git: &syncapi.GitSource{
-				URL: url,
-				Version: syncapi.GitVersion{
-					Tag: tag,
+func makeSync(url, tag string) fleetv1.SyncWithBindings {
+	return fleetv1.SyncWithBindings{
+		Sync: syncapi.Sync{
+			Source: syncapi.SourceSpec{
+				Git: &syncapi.GitSource{
+					URL: url,
+					Version: syncapi.GitVersion{
+						Tag: tag,
+					},
 				},
 			},
+			// leave package to default
 		},
-		// leave package to default
 	}
 }
 
@@ -99,11 +101,7 @@ var _ = Describe("modules", func() {
 
 		var (
 			namespace *corev1.Namespace
-			clusters  = []string{
-				"cluster-1",
-				"cluster-2",
-				"cluster-3",
-			}
+			clusters  []string
 		)
 
 		BeforeEach(func() {
@@ -111,9 +109,11 @@ var _ = Describe("modules", func() {
 			namespace.Name = "ns-" + randString(5)
 			Expect(k8sClient.Create(context.TODO(), namespace)).To(Succeed())
 
-			for _, name := range clusters {
+			clusters = make([]string, 3)
+			for i := range clusters {
+				clusters[i] = "cluster-" + randString(5)
 				cluster := &clusterv1.Cluster{}
-				cluster.Name = name
+				cluster.Name = clusters[i]
 				cluster.Namespace = namespace.Name
 				cluster.SetLabels(map[string]string{
 					"environment": "production",
@@ -162,12 +162,12 @@ var _ = Describe("modules", func() {
 				for _, asm := range asms.Items {
 					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 						Name: "matches",
-						Sync: matchModule.Spec.Sync,
+						Sync: matchModule.Spec.Sync.Sync,
 					}))
 					Expect(asm.GetOwnerReferences()).To(ContainElement(ownerRef(matchModule)))
 					Expect(asm.Spec.Assemblage.Syncs).NotTo(ContainElement(syncapi.NamedSync{
 						Name: "nomatch",
-						Sync: nomatchModule.Spec.Sync,
+						Sync: nomatchModule.Spec.Sync.Sync,
 					}))
 					Expect(asm.GetOwnerReferences()).NotTo(ContainElement(ownerRef(nomatchModule)))
 				}
@@ -188,7 +188,7 @@ var _ = Describe("modules", func() {
 				}, "5s", "1s").Should(BeTrue())
 				Expect(newAsm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 					Name: matchModule.Name,
-					Sync: matchModule.Spec.Sync,
+					Sync: matchModule.Spec.Sync.Sync,
 				}))
 				// the remote assemblage should be special-owned by the cluster
 				clusterOwnerRef := ownerRef(&newCluster)
@@ -198,7 +198,7 @@ var _ = Describe("modules", func() {
 				Expect(newAsm.GetOwnerReferences()).To(ContainElement(clusterOwnerRef))
 				Expect(newAsm.Spec.Assemblage.Syncs).NotTo(ContainElement(syncapi.NamedSync{
 					Name: nomatchModule.Name,
-					Sync: nomatchModule.Spec.Sync,
+					Sync: nomatchModule.Spec.Sync.Sync,
 				}))
 			})
 		})
@@ -223,7 +223,7 @@ var _ = Describe("modules", func() {
 				for _, asm := range asms.Items {
 					Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 						Name: module.Name,
-						Sync: module.Spec.Sync,
+						Sync: module.Spec.Sync.Sync,
 					}))
 				}
 
@@ -247,24 +247,81 @@ var _ = Describe("modules", func() {
 				}, "5s", "1s").Should(BeTrue())
 			})
 		})
+
+		Context("module specialisation", func() {
+			It("evaluates controlPlaneBindings but not (target cluster) bindings", func() {
+				sync := makeSync("https://github.com/cuttlefacts/app", "v3.0.4")
+				sync.Bindings = []syncapi.Binding{
+					{
+						Name: "app.name",
+						BindingSource: syncapi.BindingSource{
+							Value: &syncapi.Value{
+								String: "$(cluster.name)", // NB not evaluated
+							},
+						},
+					},
+				}
+				mod := &fleetv1.Module{
+					Spec: fleetv1.ModuleSpec{
+						Selector: &metav1.LabelSelector{},
+						ControlPlaneBindings: []syncapi.Binding{
+							{
+								Name: "cluster.name", // NB but do not define "CLUSTER_NAME" as a binding
+								BindingSource: syncapi.BindingSource{
+									Value: &syncapi.Value{
+										String: "$(CLUSTER_NAME)",
+									},
+								},
+							},
+						},
+						Sync: sync,
+					},
+				}
+				mod.Name = "mod-" + randString(5)
+				mod.Namespace = namespace.Name
+				Expect(k8sClient.Create(context.TODO(), mod)).To(Succeed())
+
+				var asms fleetv1.RemoteAssemblageList
+				Eventually(func() bool {
+					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
+					return err == nil && len(asms.Items) == len(clusters)
+				}, "5s", "1s").Should(BeTrue())
+
+				for _, asm := range asms.Items {
+					// Just one sync, from our module (because the whole namespace is created and deleted for each Context)
+					Expect(len(asm.Spec.Assemblage.Syncs)).To(Equal(1))
+					sync := asm.Spec.Assemblage.Syncs[0]
+					Expect(sync.Name).To(Equal(mod.Name))
+					Expect(sync.Bindings).To(ConsistOf(
+						// NB not included: CLUSTER_NAME
+						syncapi.Binding{
+							Name: "cluster.name",
+							BindingSource: syncapi.BindingSource{
+								Value: &syncapi.Value{
+									String: asm.Name, // == cluster.Name
+								},
+							},
+						},
+						syncapi.Binding{
+							Name: "app.name",
+							BindingSource: syncapi.BindingSource{
+								Value: &syncapi.Value{
+									String: "$(cluster.name)", // NB not evaluated
+								},
+							},
+						},
+					))
+				}
+			})
+		})
 	})
 
 	Context("module status", func() {
-		var (
-			namespace *corev1.Namespace
-		)
-
-		BeforeEach(func() {
-			namespace = &corev1.Namespace{}
+		It("reports aggregate stats in module status", func() {
+			namespace := &corev1.Namespace{}
 			namespace.Name = "ns-" + randString(5)
 			Expect(k8sClient.Create(context.TODO(), namespace)).To(Succeed())
-		})
 
-		AfterEach(func() {
-			Expect(k8sClient.Delete(context.TODO(), namespace)).To(Succeed())
-		})
-
-		It("reports aggregate stats in module status", func() {
 			cluster := clusterv1.Cluster{}
 			cluster.Namespace = namespace.Name
 			cluster.Name = "clus-" + randString(5)
@@ -289,7 +346,7 @@ var _ = Describe("modules", func() {
 			asm := asms.Items[0]
 			Expect(asm.Spec.Assemblage.Syncs).To(ContainElement(syncapi.NamedSync{
 				Name: module.Name,
-				Sync: module.Spec.Sync,
+				Sync: module.Spec.Sync.Sync,
 			}))
 
 			// All that is as expected. Now, give the assemblage a status,
@@ -317,5 +374,7 @@ var _ = Describe("modules", func() {
 			Expect(m.Status.Summary.Total).To(Equal(1))
 			Expect(m.Status.Summary.Succeeded).To(Equal(1))
 		})
+
 	})
+
 })

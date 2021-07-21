@@ -20,13 +20,18 @@ type Sync struct {
 }
 
 // NamedSync is used when there's a list of syncs, so the name can be
-// mentioned elsewhere to refer to the particular sync.
+// mentioned elsewhere to refer to the particular sync. These always
+// have their own bindings because they are used in types that have
+// bindings to evaluate in the target cluster.
 type NamedSync struct {
 	// Name gives the sync a name so it can be correlated to the status
 	// +required
-	Name     string    `json:"name"`
+	Name string `json:"name"`
+	// Bindings gives a list of variable bindings to use when evaluating the package spec in the sync
+	// +optional
 	Bindings []Binding `json:"bindings,omitempty"`
-	Sync     `json:",inline"`
+	// +required
+	Sync `json:",inline"`
 }
 
 // SourceSpec gives the details for the source, i.e., from where to

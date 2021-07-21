@@ -40,9 +40,12 @@ spec:
                 items:
                   description: NamedSync is used when there's a list of syncs, so
                     the name can be mentioned elsewhere to refer to the particular
-                    sync.
+                    sync. These always have their own bindings because they are used
+                    in types that have bindings to evaluate in the target cluster.
                   properties:
                     bindings:
+                      description: Bindings gives a list of variable bindings to use
+                        when evaluating the package spec in the sync
                       items:
                         description: Binding specifies how to obtain a value to bind
                           to a name. The name can then be mentioned elsewhere in an
@@ -156,6 +159,8 @@ spec:
                       description: Sync gives the last applied sync spec.
                       properties:
                         bindings:
+                          description: Bindings gives a list of variable bindings
+                            to use when evaluating the package spec in the sync
                           items:
                             description: Binding specifies how to obtain a value to
                               bind to a name. The name can then be mentioned elsewhere
