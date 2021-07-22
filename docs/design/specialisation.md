@@ -1,21 +1,27 @@
 <!-- -*- fill-column: 100 -*- -->
 # Configuration specialisation
 
-**Status: drafting**
+**Status: implemented**
 
 Every piece of configuration that is assigned to a cluster is likely to need to be specialised to
 that cluster. For example, it might need an IP address that depends on the data centre in which it
-runs, or to refer to an image registry in the same availability zone, or to name certain external
-resources after the cluster itself.
+runs, or to refer to an image registry in the same availability zone, or to name some resources
+after the cluster itself.
+
+This design describes an addition to the API, specifying how `Module` and `BootstrapModule` objects
+should be specialised to clusters.
 
 ## Uses
+
+The following scenarios describe distinct uses for specialisation. Under the heading "How do you do
+...?" below, these are revisited with reference to the design as given.
 
 **Interpolate a property of the cluster into configuration**
 
 As an example, you have a configuration that creates some external resources which are particular to
-the cluster, and to keep the resources unique, you want to use the cluster name as a prefix. The
+the cluster; and to keep the resources unique, you want to use the cluster name as a prefix. The
 cluster name is available in the control plane, and you can control the configuration so you can put
-substitution sites in.
+substitution markers in.
 
 **Adapt someone else's configuration**
 
@@ -50,19 +56,22 @@ along in the assemblage layer.
 
 Essentially, specialisation will mean taking some kind of template, and interpolating values into
 it. There is one easily accessible, reasonably general opportunity to modify the source before it is
-applied, and that is by using the `postBuild` field of a kustomization, which can substitute
-environment entries into fields marked in the source configuration.
+applied:
 
-Other opportunities exist:
+ - use the `postBuild` field of a kustomization, which can substitute environment entries into
+   fields marked in the source configuration.
+
+More complicated opportunities exist:
 
  - use a composite source to mount a kustomization.yaml into the source used; especially useful when
-   you don't own the configuration and can't put envsubst markers in
+   you don't own the configuration and can't put envsubst markers in.
+ - if Helm charts were a type of package in syncs, the `values` for the chart could be specialised.
 
 Kustomize can help if the configuration cannot have substitution sites put in it, e.g., if it
 belongs to someone else. However, you would need to subsitute values into the kustomization itself,
 if they are not literal, since Kustomize has no concept of parameters.
 
-You can create your own version of the first option above by making a git repository with a
+You can create your own version of "use a composite source" above by making a git repository with a
 kustomization in it, then substituting into the result with the envsubst mechanism. The question is
 to what extent the system makes this easy for you, e.g., by taking a high-level description and
 making the git repository available, composing it with other sources, etc. One small step would be
@@ -71,13 +80,10 @@ them in modules.
 
  - write a controller that can do more sophisticated specialisation, and use that instead of
    source-controller
+ - bake the specialisation into source-controller so it's available everywhere.
 
-Alternatively, bake the specialisation into source-controller so it's available everywhere.
-
-All the above assumes it's the configuration that is specialised, and not the sync. As an example of
-specialising the sync, you might want some particular clusters to replace images. However: to the
-extent that things in the sync are exposed in modules etc., this use is covered by having different
-modules (and to the extent that things are not exposed, you can't do it anyway).
+These require changes to the upstream (GitOps Toolkit), so I would prefer to start with the first,
+simplest alternative.
 
 **Where can values come from?**
 
@@ -136,20 +142,21 @@ the name is bound in a separate step, then mentioned:
 
 ```yaml
 spec:
-  environment:
+  bindings:
   - name: APP_NAME
     value: foo
-  syncs:
-  - kustomize:
-      substitutions:
-      - APP_NAME: $(APP_NAME)
+  sync:
+    package:
+      kustomize:
+        substitute:
+        - APP_NAME: $(APP_NAME)
 ```
 
 That way,
 
  - environment entries could be used in e.g., a Helm values object, and work the same way
  - environment entries can be bound once then used in more than one context; e.g., in more than one
-   sync
+   sync, or to construct further bindings.
 
 The downside to this is that it can feel like you are repeating yourself, if the destination is also
 something like an environment as above (`APP_NAME: $(APP_NAME)`). Special syntax for mentioning a
@@ -157,12 +164,14 @@ binding may be in order for those situations:
 
 ```yaml
 spec:
-  syncs:
-  - kustomize:
-      substitutions:
-      - binding: APP_NAME
-      - name: DEFINED_HERE
-        value: foo
+  # ... imagine the bindings
+  sync:
+  package:
+    kustomize:
+      substitute:
+      - name: APP_NAME # look this up in the bindings
+      - name: REDEFINED_HERE
+        value: $(APP_NAME)
 ```
 
 A potential weakness is that the syntax for referring to an environment entry will need to be chosen
@@ -189,28 +198,12 @@ downstream, and for "showing working":
 ```yaml
 spec:
   bindings:
-  - name: APP_NAME
-    value: frob
-  - name: APP_NAMESPACE
-    value: $(APP_NAME)-ns
-```
-
-Values in `ConfigMap` and `Secret` objects are just fields under `.data`, so there is no need to
-have a special case for those.
-
-```yaml
-spec:
-  bindings:
-  - name: APP_NAME
-    objectFieldReference:
-      kind: ConfigMap
-      name: app_config
-      path: .data.AppName
-  - name: API_HOST
-    objectFieldReference:
-      kind: Cluster
-      name: $(CLUSTER_NAME)
-      path: .spec.controlPlaneEndpoint.host
+  - name: HOST
+    value: foo.svc.cluster.local
+  - name: PORT
+    value: 3030
+  - name: ADDR
+    value: $(HOST):$(PORT)
 ```
 
 If you have the ability to name an object, and you have the name of the target cluster available,
@@ -231,7 +224,7 @@ spec:
     objectFieldReference:
       kind: Cluster
       name: $(CLUSTER_NAME)
-      path: .spec.controlPlaneEndpoint.host
+      fieldPath: /spec/controlPlaneEndpoint/host
 ```
 
 This has the added complexity of having a magic binding, and of needing to interpolate into other
@@ -249,26 +242,39 @@ spec:
       path: .data.AppName
   - name: API_HOST
     clusterFieldReference:
-      path: .spec.controlPlaneEndpoint.host
+      path: /spec/controlPlaneEndpoint/host
 ```
 
 This suffers from being extra syntax, and being very narrow -- how do you refer to some other object
-related to the cluster, for example.
+related to the cluster, for example. I prefer the first.
+
+Values in `ConfigMap` and `Secret` objects are just fields under `.data`, so there is no need to
+have a special case for those.
+
+```yaml
+spec:
+  bindings:
+  - name: APP_NAME
+    objectFieldRef:
+      kind: ConfigMap
+      name: app_config
+      path: /data/AppName
+```
 
 **Upstream vs downstream**
 
-It needs to be specified whether an object to be resolved is in the source cluster or the
-destination cluster; and there is a benefit to this being clear to the user writing or reading a
-spec, as well. Since different types will have one or other or both (e.g., an Assemblage won't have
-upstream bindings), there's a strong indication that bindings should be segregated into separate
-fields entirely.
+It needs to be specified for the machinery whether an `objectFieldRef` to be resolved is in the
+source cluster or the destination cluster; and there is a benefit to this being clear to the user
+writing or reading a spec, as well. Since different types will have one or other or both (e.g., an
+Assemblage won't have upstream bindings), there's a strong indication that upstream and downstream
+bindings should be in separate fields.
 
 Indeed, it's easier to implement and to understand as a user if the source cluster bindings are
 obviously evaluated before the target cluster bindings. (I'm sure it is possible technically to find
 a fixed point when anything can refer to anything, but there is less magic if it can't.)
 
 For those reasons, there should be a section for bindings involving upstream objects, and a section
-for bindings involving downstream objects:
+for bindings involving downstream objects, e.g.,
 
 ```yaml
 spec:
@@ -288,14 +294,19 @@ spec:
     downstream:
 ```
 
-For consistency, it's better if the same field names are used and are just present or
-absent. Therefore, maybe:
+Modules, BootstrapModules, and Assemblages all have slightly different arrangements of bindings. For
+consistency, it's better if the same field names are used in different types, and are just present
+or absent. In an Assemblage, there will be bindings for each sync, so they naturally live in the
+sync field.
+
+This leads to the following formulation:
 
 ```yaml
 spec:
-   bindings: # evaluated here
-   ...
-   downstreamBindings: # evaluated downstream
+    controlPlaneBindings: ... # evaluated in the control plane, for Modules and BootstrapModules
+    # ... some nesting ...
+    sync: # or one of several syncs
+        bindings: # evaluated downstream, for Modules and Assemblages
    ...
 ```
 
@@ -306,22 +317,22 @@ themselves. This choice makes the implementation and comprehension a little more
 opens up possibilities for the user.
 
 When do mentions of names outside the bindings get evaluated? Since it's possible to still have
-unreolved bindings in the upstream cluster, this has to happen in the downstream cluster. This means
-you can't have anything that needs to be used in the upstream cluster be a site for interpolation;
-e.g., the selector of a Module cannot use substitutions, and neither can the name of a sync.
+unresolved bindings in the upstream cluster, this has to happen in the downstream cluster. This
+means you can't have anything that needs to be used in the upstream cluster be a site for
+interpolation; e.g., the selector of a Module cannot use substitutions, and neither can the name of
+a sync.
 
 Therefore it seems better to selectively allow substitutions; e.g., in certain fields of each sync
 description. Since a module is a _specific_ config at a _specific_ version, the git repository and
-version are probably out, at least to start with. This leaves the `package` field, or specific
-fields therein.
+version are probably out, at least to start with. This leaves fields within `package`, starting with
+the new field `kustomize.substitute`.
 
-**Interpolation of values**
+**Stringification of values**
 
 Since a field value can have an aggregate type (e.g., a list), but variable mentions can be in the
-middle of a value (e.g., `"--app $(app_name)"`) , values will need to be stringified. There's a
-choice of how to stringify values.
-
-TODO
+middle of a value (e.g., `"--app $(app_name)"`) , values will need to be stringified. This, there's
+a choice of how to stringify values, which I am going to defer until I have some experience with
+using specialisation.
 
 ## How do you do ...?
 
@@ -329,8 +340,9 @@ TODO
 
  - Add an envsubst marker to your configuration (or create a kustomization which patches the
    envsubst marker in);
- - In your Module spec, use a directive to refer to a Cluster field. When the module is assigned to
-   a cluster, the value will be filled in.
+ - In your Module spec, use an `objectFieldRef` binding to refer to a Cluster field, and add an
+   entry to `substitute` mapping it to the envsubst marker. When the module is assigned to a
+   cluster, the value will be filled in.
 
 **Adapt someone else's configuration**
 
@@ -339,8 +351,8 @@ figure out where you want to interpolate values into, then make a kustomization 
 values into the right places.
 
 In GitOps Toolkit you might compose sources together to avoid using submodules or vendoring the
-original configuration; in the absence of a mechanism for giving composite sources here, I'm going
-to just use submodules. Aside from not requiring further design, an advantage is that the whole
+original configuration; in the absence of a mechanism for giving composite sources here, I would
+suggest using submodules. Aside from not requiring further design, an advantage is that the whole
 configuration is available in the git repository, rather than being assembled at runtime, so you can
 verify it statically.
 
@@ -354,8 +366,8 @@ Therefore:
 **Interpolate a field from within the cluster into the configuration**
 
  - Put envsubst markers into your configuration, or create a kustomization which patches them in;
- - In your Module spec, use directives to get values for envsubst from the desired workload cluster
-   resource.
+ - In your Module spec, use directives to get values for envsubst from the desired downstream
+   cluster resource.
 
 **Interpolate a value from another module into a configuration**
 
