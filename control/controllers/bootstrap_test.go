@@ -133,8 +133,8 @@ var _ = Describe("bootstrap module controller", func() {
 					{
 						Name: "cluster.name",
 						BindingSource: syncapi.BindingSource{
-							Value: &syncapi.Value{
-								String: "$(CLUSTER_NAME)",
+							StringValue: &syncapi.StringValue{
+								Value: "$(CLUSTER_NAME)",
 							},
 						},
 					},

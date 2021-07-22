@@ -20,8 +20,8 @@ var ErrUnknownBindingForm = errors.New("unknown binding form")
 // the owning object.
 func ResolveBinding(ctx context.Context, client client.Client, b Binding, resolve func(string) string) (string, error) {
 	switch {
-	case b.BindingSource.Value != nil:
-		s := b.BindingSource.Value.String
+	case b.BindingSource.StringValue != nil:
+		s := b.BindingSource.StringValue.Value
 		s = expansion.Expand(s, resolve)
 		return s, nil
 	case b.ObjectFieldRef != nil:

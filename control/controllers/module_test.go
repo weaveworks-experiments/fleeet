@@ -255,8 +255,8 @@ var _ = Describe("modules", func() {
 					{
 						Name: "app.name",
 						BindingSource: syncapi.BindingSource{
-							Value: &syncapi.Value{
-								String: "$(cluster.name)", // NB not evaluated
+							StringValue: &syncapi.StringValue{
+								Value: "$(cluster.name)", // NB not evaluated
 							},
 						},
 					},
@@ -268,8 +268,8 @@ var _ = Describe("modules", func() {
 							{
 								Name: "cluster.name", // NB but do not define "CLUSTER_NAME" as a binding
 								BindingSource: syncapi.BindingSource{
-									Value: &syncapi.Value{
-										String: "$(CLUSTER_NAME)",
+									StringValue: &syncapi.StringValue{
+										Value: "$(CLUSTER_NAME)",
 									},
 								},
 							},
@@ -297,16 +297,16 @@ var _ = Describe("modules", func() {
 						syncapi.Binding{
 							Name: "cluster.name",
 							BindingSource: syncapi.BindingSource{
-								Value: &syncapi.Value{
-									String: asm.Name, // == cluster.Name
+								StringValue: &syncapi.StringValue{
+									Value: asm.Name, // == cluster.Name
 								},
 							},
 						},
 						syncapi.Binding{
 							Name: "app.name",
 							BindingSource: syncapi.BindingSource{
-								Value: &syncapi.Value{
-									String: "$(cluster.name)", // NB not evaluated
+								StringValue: &syncapi.StringValue{
+									Value: "$(cluster.name)", // NB not evaluated
 								},
 							},
 						},

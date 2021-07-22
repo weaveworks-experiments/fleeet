@@ -17,12 +17,15 @@ type Binding struct {
 // BindingSource is a union of the various places a value can come from
 type BindingSource struct {
 	// Value supplies a literal value
-	Value          *Value               `json:"value,omitempty"`
+	// +optional
+	*StringValue `json:",omitempty"`
+	// +optional
 	ObjectFieldRef *ObjectFieldSelector `json:"objectFieldRef,omitempty"`
 }
 
-type Value struct {
-	String string `json:"string"`
+type StringValue struct {
+	// +optional
+	Value string `json:"value"`
 }
 
 type ObjectFieldSelector struct {

@@ -75,13 +75,7 @@ spec:
                             - name
                             type: object
                           value:
-                            description: Value supplies a literal value
-                            properties:
-                              string:
-                                type: string
-                            required:
-                            - string
-                            type: object
+                            type: string
                         required:
                         - name
                         type: object
@@ -191,13 +185,7 @@ spec:
                                 - name
                                 type: object
                               value:
-                                description: Value supplies a literal value
-                                properties:
-                                  string:
-                                    type: string
-                                required:
-                                - string
-                                type: object
+                                type: string
                             required:
                             - name
                             type: object

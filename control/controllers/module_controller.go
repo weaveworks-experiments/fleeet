@@ -165,8 +165,8 @@ clusters:
 				bindingsFromControlPlane = append(bindingsFromControlPlane, syncapi.Binding{
 					Name: k,
 					BindingSource: syncapi.BindingSource{
-						Value: &syncapi.Value{
-							String: v,
+						StringValue: &syncapi.StringValue{
+							Value: v,
 						},
 					},
 				})

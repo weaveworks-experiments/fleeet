@@ -165,14 +165,14 @@ var _ = Describe("assemblage controller", func() {
 									// value binding
 									Name: "APP_NAME",
 									BindingSource: syncapi.BindingSource{
-										Value: &syncapi.Value{String: bindingValue},
+										StringValue: &syncapi.StringValue{Value: bindingValue},
 									},
 								},
 								{
 									// depends on the previous binding
 									Name: "APP_NAME_PLUS",
 									BindingSource: syncapi.BindingSource{
-										Value: &syncapi.Value{String: "$(APP_NAME)+"},
+										StringValue: &syncapi.StringValue{Value: "$(APP_NAME)+"},
 									},
 								},
 								{
@@ -192,21 +192,21 @@ var _ = Describe("assemblage controller", func() {
 									// value binding _not_ mentioned directly in the package
 									Name: "PORT",
 									BindingSource: syncapi.BindingSource{
-										Value: &syncapi.Value{String: "3030"},
+										StringValue: &syncapi.StringValue{Value: "3030"},
 									},
 								},
 								{
 									// value binding _not_ mentioned directly in the package
 									Name: "HOST",
 									BindingSource: syncapi.BindingSource{
-										Value: &syncapi.Value{String: "0.0.0.0"},
+										StringValue: &syncapi.StringValue{Value: "0.0.0.0"},
 									},
 								},
 								{
 									// depends on the previous, otherwise unused bindings
 									Name: "HOSTPORT",
 									BindingSource: syncapi.BindingSource{
-										Value: &syncapi.Value{String: "$(HOST):$(PORT)"},
+										StringValue: &syncapi.StringValue{Value: "$(HOST):$(PORT)"},
 									},
 								},
 							},
