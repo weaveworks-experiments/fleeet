@@ -591,6 +591,9 @@ github.com/spf13/viper v1.4.0/go.mod h1:PTJ7Z/lr49W6bUbkmS1V3by4uWynFiR9p7+dSq/y
 github.com/spf13/viper v1.7.0/go.mod h1:8WkrPz2fc9jxqZNCJI/76HCieCp4Q8HaLFoCha5qpdg=
 github.com/squaremo/fleeet/assemblage v0.0.4 h1:O4VRg6bMWQEE5uQXvaYFuPjFHVS69533FwXsS1ZOZhM=
 github.com/squaremo/fleeet/assemblage v0.0.4/go.mod h1:4YecQPolQpi42hiyOJKzv5YMdJ+GQEJs5YwaGllU8FU=
+github.com/squaremo/fleeet/pkg v0.0.1/go.mod h1:2p/GC7+5XdQjoUg7jveLdem6UyuEAIOyGiRAs9+3rOY=
+github.com/squaremo/fleeet/pkg v0.0.2-0.20210722151612-d2e6540e69d6 h1:769R97QOMkoG/XI9cFQBC8morX+W37DgHLJX5CTmrZc=
+github.com/squaremo/fleeet/pkg v0.0.2-0.20210722151612-d2e6540e69d6/go.mod h1:zmOneM0CcQv4RdOgsOCMVzVIlwt0yEGykPvpQqfSG8s=
 github.com/stoewer/go-strcase v1.2.0/go.mod h1:IBiWB2sKIp3wVVQ3Y035++gc+knqhUQag1KpM8ahLw8=
 github.com/streadway/amqp v0.0.0-20190404075320-75d898a42a94/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
 github.com/streadway/amqp v0.0.0-20190827072141-edfb9018d271/go.mod h1:AZpEONHx3DKn8O/DFsRAY58/XVQiIPMTMB1SddzLXVw=
