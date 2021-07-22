@@ -93,7 +93,87 @@ clusters:
 		asm.Namespace = cluster.GetNamespace()
 		asm.Name = cluster.GetName()
 
+		// Used to get any resources mentioned in controlPlaneBindings
+		namespacedClient := client.NewNamespacedClient(r.Client, mod.Namespace)
+
+		// Evaluate all the control-plane bindings. This is the
+		// naive approach -- better would be to run through the
+		// bindings in the sync and see which control plane
+		// bindings are actually used -- but this will do for now.
+
+		// start with CLUSTER_NAME available to use in bindings
+		memo := map[string]string{
+			"CLUSTER_NAME": cluster.Name,
+		}
+
+		var bindingErr error
+		var makeBindingFunc func(stack []string) func(string) string
+		makeBindingFunc = func(stack []string) func(string) string {
+			return func(name string) string {
+				for i := range stack {
+					if stack[i] == name {
+						bindingErr = fmt.Errorf("circular binding %q", name)
+						return ""
+					}
+				}
+
+				if v, ok := memo[name]; ok {
+					return v
+				}
+				for _, b := range mod.Spec.ControlPlaneBindings {
+					if b.Name == name {
+						v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, makeBindingFunc(append(stack, name)))
+						if err != nil {
+							bindingErr = err
+							v = ""
+						}
+						memo[name] = v
+						return v
+					}
+				}
+				memo[name] = ""
+				return ""
+			}
+		}
+
+		// The loop following is for the side-effect of filling out
+		// the map of values (and to see if there are errors). Since
+		// the map will be used to add to target-side bindings, I need
+		// to know if CLUSTER_NAME is explicitly named as a
+		// controlPlaneBinding and therefore should be included.
+		var clusterNameExplicitBinding bool
+		for _, binding := range mod.Spec.ControlPlaneBindings {
+			if binding.Name == "CLUSTER_NAME" {
+				clusterNameExplicitBinding = true
+			}
+			bindingErr = nil
+			// this pulls the binding through memoisation
+			makeBindingFunc(nil)(binding.Name)
+			if bindingErr != nil {
+				return ctrl.Result{}, bindingErr
+			}
+		}
+
 		op, err := controllerutil.CreateOrUpdate(ctx, r.Client, asm, func() error {
+			var bindingsFromControlPlane []syncapi.Binding
+			for k, v := range memo {
+				if k == "CLUSTER_NAME" && !clusterNameExplicitBinding {
+					continue
+				}
+				// NB the order of these is not important, since they
+				// are all evaluated ahead of time.
+				bindingsFromControlPlane = append(bindingsFromControlPlane, syncapi.Binding{
+					Name: k,
+					BindingSource: syncapi.BindingSource{
+						StringValue: &syncapi.StringValue{
+							Value: v,
+						},
+					},
+				})
+			}
+
+			bindings := append(bindingsFromControlPlane, mod.Spec.Sync.Bindings...)
+
 			// Each RemoteAssemblage is owned by each of the modules
 			// assigned to it. This is for the sake of indexing.
 			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
@@ -118,14 +198,16 @@ clusters:
 					// NB: CreateOrUpdate will avoid the update if the mutated object
 					// is deep-equal to the original. That helps this process reach a
 					// fixed point.
-					syncs[i].Sync = mod.Spec.Sync
+					syncs[i].Sync = mod.Spec.Sync.Sync
+					syncs[i].Bindings = bindings
 					return nil
 				}
 			}
 			// not there -- add this module
 			asm.Spec.Assemblage.Syncs = append(syncs, syncapi.NamedSync{
-				Name: mod.Name,
-				Sync: mod.Spec.Sync,
+				Name:     mod.Name,
+				Sync:     mod.Spec.Sync.Sync,
+				Bindings: bindings,
 			})
 			return nil
 		})
@@ -180,7 +262,7 @@ clusters:
 
 	// TODO: This should correspond to the summary; figure out if the
 	// summary should be calculated based on changes done above.
-	mod.Status.ObservedSync = &mod.Spec.Sync
+	mod.Status.ObservedSync = &mod.Spec.Sync.Sync
 	if err := r.Status().Update(ctx, &mod); err != nil {
 		return ctrl.Result{}, fmt.Errorf("updating status of module: %w", err)
 	}

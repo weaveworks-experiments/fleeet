@@ -116,14 +116,29 @@ var _ = Describe("bootstrap module controller", func() {
 		<-managerDone
 	})
 
-	It("expands bootstrap modules", func() {
-		namespace := corev1.Namespace{}
+	var (
+		namespace corev1.Namespace
+		mod       fleetv1.BootstrapModule
+	)
+
+	BeforeEach(func() {
+		namespace = corev1.Namespace{}
 		namespace.Name = randString(5)
 		Expect(k8sClient.Create(context.TODO(), &namespace)).To(Succeed())
 
-		mod := fleetv1.BootstrapModule{
+		mod = fleetv1.BootstrapModule{
 			Spec: fleetv1.BootstrapModuleSpec{
 				Selector: &metav1.LabelSelector{}, // all clusters
+				ControlPlaneBindings: []syncapi.Binding{
+					{
+						Name: "cluster.name",
+						BindingSource: syncapi.BindingSource{
+							StringValue: &syncapi.StringValue{
+								Value: "$(CLUSTER_NAME)",
+							},
+						},
+					},
+				},
 				Sync: syncapi.Sync{
 					Source: syncapi.SourceSpec{
 						Git: &syncapi.GitSource{
@@ -136,6 +151,9 @@ var _ = Describe("bootstrap module controller", func() {
 					Package: &syncapi.PackageSpec{
 						Kustomize: &syncapi.KustomizeSpec{
 							Path: "./deploy",
+							Substitute: map[string]string{
+								"cluster.name": "$(cluster.name)",
+							},
 						},
 					},
 				},
@@ -144,7 +162,27 @@ var _ = Describe("bootstrap module controller", func() {
 		mod.Namespace = namespace.Name
 		mod.Name = randString(5)
 		Expect(k8sClient.Create(context.TODO(), &mod)).To(Succeed())
+	})
 
+	var (
+		clusters map[string]*clusterv1.Cluster
+	)
+
+	BeforeEach(func() {
+		// Create clusters so I can check e.g., that there's a
+		// Kustomization per cluster, targeting the cluster.
+		clusters = make(map[string]*clusterv1.Cluster)
+		for i := 0; i < 3; i++ {
+			cluster := &clusterv1.Cluster{}
+			cluster.Name = "cluster-" + randString(5)
+			cluster.Namespace = namespace.Name
+			clusters[cluster.Name] = cluster
+			Expect(k8sClient.Create(context.TODO(), cluster)).To(Succeed())
+		}
+
+	})
+
+	It("creates source", func() {
 		// Check there's a GitRepository created for the module
 		var src sourcev1.GitRepository
 		Eventually(func() bool {
@@ -156,18 +194,9 @@ var _ = Describe("bootstrap module controller", func() {
 		}, "5s", "1s").Should(BeTrue())
 
 		Expect(metav1.IsControlledBy(&src, &mod)).To(BeTrue())
+	})
 
-		// Create clusters and check there's a Kustomization per
-		// cluster, targeting the cluster.
-		clusters := make(map[string]*clusterv1.Cluster)
-		for i := 0; i < 3; i++ {
-			cluster := &clusterv1.Cluster{}
-			cluster.Name = "cluster-" + randString(5)
-			cluster.Namespace = namespace.Name
-			clusters[cluster.Name] = cluster
-			Expect(k8sClient.Create(context.TODO(), cluster)).To(Succeed())
-		}
-
+	It("expands to a kustomization per cluster", func() {
 		var kustoms kustomv1.KustomizationList
 		Eventually(func() bool {
 			if err := k8sClient.List(context.TODO(), &kustoms, client.InNamespace(namespace.Name)); err != nil {
@@ -179,12 +208,12 @@ var _ = Describe("bootstrap module controller", func() {
 
 		// Check each Kustomization is controlled by the module, owned
 		// by a cluster, targets the cluster, and has the
-		// bootstrapmodule sync.
+		// BootstrapModule sync with expanded bindings.
 
 		for _, kustom := range kustoms.Items {
 			// the kustomization spec is what the module says
 			Expect(kustom.Spec.SourceRef.Kind).To(Equal("GitRepository"))
-			Expect(kustom.Spec.SourceRef.Name).To(Equal(src.Name))
+			Expect(kustom.Spec.SourceRef.Name).To(Equal(mod.Name)) // == src.Name
 			Expect(kustom.Spec.Path).To(Equal(mod.Spec.Sync.Package.Kustomize.Path))
 
 			// the module owns the ksutomization
@@ -192,6 +221,8 @@ var _ = Describe("bootstrap module controller", func() {
 			Expect(controller).NotTo(BeNil())
 			Expect(controller.Kind).To(Equal("BootstrapModule"))
 			Expect(controller.Name).To(Equal(mod.Name))
+
+			var clusterName string
 
 			// one cluster owns the kustomization, and that cluster is
 			// targeted by the kubeconfig
@@ -205,11 +236,21 @@ var _ = Describe("bootstrap module controller", func() {
 						},
 					}))
 					ownersThatAreCluster++
+					clusterName = owner.Name
 					// remove from consideration
 					delete(clusters, owner.Name)
 				}
 			}
 			Expect(ownersThatAreCluster).To(Equal(1))
+			Expect(clusterName).ToNot(BeEmpty())
+
+			// bindings are expanded
+			Expect(kustom.Spec.PostBuild).NotTo(BeNil())
+			Expect(kustom.Spec.PostBuild.Substitute).NotTo(BeNil())
+			substitutions := kustom.Spec.PostBuild.Substitute
+			Expect(substitutions).To(Equal(map[string]string{
+				"cluster.name": clusterName,
+			}))
 		}
 		// All the clusters were accounted for.
 		Expect(clusters).To(BeEmpty())

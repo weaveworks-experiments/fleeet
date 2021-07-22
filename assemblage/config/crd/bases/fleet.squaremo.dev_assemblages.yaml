@@ -40,8 +40,46 @@ spec:
                 items:
                   description: NamedSync is used when there's a list of syncs, so
                     the name can be mentioned elsewhere to refer to the particular
-                    sync.
+                    sync. These always have their own bindings because they are used
+                    in types that have bindings to evaluate in the target cluster.
                   properties:
+                    bindings:
+                      description: Bindings gives a list of variable bindings to use
+                        when evaluating the package spec in the sync
+                      items:
+                        description: Binding specifies how to obtain a value to bind
+                          to a name. The name can then be mentioned elsewhere in an
+                          object, and be replaced with the value as evaluated.
+                        properties:
+                          name:
+                            type: string
+                          objectFieldRef:
+                            properties:
+                              apiVersion:
+                                description: APIVersion gives the APIVersion (<group>/<version>)
+                                  for the object's type
+                                type: string
+                              fieldPath:
+                                description: Path is a JSONPointer expression for
+                                  finding the value in the object identified
+                                type: string
+                              kind:
+                                description: Kind gives the kind of the object's type
+                                type: string
+                              name:
+                                description: Name names the object
+                                type: string
+                            required:
+                            - fieldPath
+                            - kind
+                            - name
+                            type: object
+                          value:
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type: array
                     name:
                       description: Name gives the sync a name so it can be correlated
                         to the status
@@ -60,6 +98,12 @@ spec:
                               description: Path gives the path within the source to
                                 treat as the Kustomization root.
                               type: string
+                            substitute:
+                              additionalProperties:
+                                type: string
+                              description: Substitute gives a map of names to values
+                                to substitute in the YAML built from the kustomization.
+                              type: object
                           type: object
                       type: object
                     source:
@@ -108,6 +152,44 @@ spec:
                     sync:
                       description: Sync gives the last applied sync spec.
                       properties:
+                        bindings:
+                          description: Bindings gives a list of variable bindings
+                            to use when evaluating the package spec in the sync
+                          items:
+                            description: Binding specifies how to obtain a value to
+                              bind to a name. The name can then be mentioned elsewhere
+                              in an object, and be replaced with the value as evaluated.
+                            properties:
+                              name:
+                                type: string
+                              objectFieldRef:
+                                properties:
+                                  apiVersion:
+                                    description: APIVersion gives the APIVersion (<group>/<version>)
+                                      for the object's type
+                                    type: string
+                                  fieldPath:
+                                    description: Path is a JSONPointer expression
+                                      for finding the value in the object identified
+                                    type: string
+                                  kind:
+                                    description: Kind gives the kind of the object's
+                                      type
+                                    type: string
+                                  name:
+                                    description: Name names the object
+                                    type: string
+                                required:
+                                - fieldPath
+                                - kind
+                                - name
+                                type: object
+                              value:
+                                type: string
+                            required:
+                            - name
+                            type: object
+                          type: array
                         name:
                           description: Name gives the sync a name so it can be correlated
                             to the status
@@ -127,6 +209,13 @@ spec:
                                   description: Path gives the path within the source
                                     to treat as the Kustomization root.
                                   type: string
+                                substitute:
+                                  additionalProperties:
+                                    type: string
+                                  description: Substitute gives a map of names to
+                                    values to substitute in the YAML built from the
+                                    kustomization.
+                                  type: object
                               type: object
                           type: object
                         source:

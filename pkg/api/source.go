@@ -6,7 +6,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 )
 
@@ -29,14 +28,4 @@ func PopulateGitRepositorySpecFromSync(dst *sourcev1.GitRepositorySpec, sync *Sy
 	dst.Reference = &ref
 
 	return nil
-}
-
-func KustomizationSpecFromPackage(pkg *PackageSpec, sourceName string) (kustomv1.KustomizationSpec, error) {
-	var spec kustomv1.KustomizationSpec
-	spec.SourceRef = kustomv1.CrossNamespaceSourceReference{
-		Kind: sourcev1.GitRepositoryKind,
-		Name: sourceName,
-	}
-	spec.Path = pkg.Kustomize.Path
-	return spec, nil
 }

@@ -18,6 +18,10 @@ type BootstrapModuleSpec struct {
 	// +optional
 	Selector *metav1.LabelSelector `json:"selector,omitempty"`
 
+	// ControlPlaneBindings gives bindings to evaluate in the control
+	// plane, e.g., before applying to a worker cluster.
+	ControlPlaneBindings []syncapi.Binding `json:"controlPlaneBindings,omitempty"`
+
 	// Sync gives the configuration to sync on assigned clusters.
 	// +required
 	Sync syncapi.Sync `json:"sync"`

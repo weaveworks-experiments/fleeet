@@ -6,6 +6,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/fluxcd/pkg/apis/meta"
@@ -23,6 +24,10 @@ import (
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
+
+// ErrCircularBinding is the error that will be logged if binding
+// definitions refer to each other recursively.
+var ErrCircularBinding = errors.New("circular definition of binding")
 
 // AssemblageReconciler reconciles a Assemblage object
 type AssemblageReconciler struct {
@@ -47,6 +52,8 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if err := r.Get(ctx, req.NamespacedName, &asm); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	namespacedClient := client.NewNamespacedClient(r.Client, asm.Namespace)
 
 	// For each sync, make sure the correct GitOps Toolkit objects
 	// exist, and collect the status of any that do.
@@ -95,7 +102,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			kustom.Name = fmt.Sprintf("%s-%d", asm.Name, i)
 
 			op, err := ctrl.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
-				spec, err := syncapi.KustomizationSpecFromPackage(sync.Package, source.Name)
+				spec, err := syncapi.KustomizationSpecFromPackage(sync.Package, source.Name, makeBindingFunc(ctx, log, namespacedClient, sync.Bindings, nil))
 				if err != nil {
 					return err
 				}
@@ -150,6 +157,39 @@ func readyState(obj meta.ObjectWithStatusConditions) syncapi.SyncState {
 		}
 	default: // FIXME possibly StateUnknown?
 		return syncapi.StateUpdating
+	}
+}
+
+func makeBindingFunc(ctx context.Context, log logr.Logger, namespacedClient client.Client, bindings []syncapi.Binding, stack []string) func(string) string {
+	memo := map[string]string{}
+	return func(name string) string {
+		// if this name was mentioned before, there's a circular definition
+		for i := range stack {
+			if stack[i] == name {
+				log.Error(ErrCircularBinding, "name", name)
+				// FIXME no way to bail; do the usual thing and pretend it doesn't exist
+				memo[name] = ""
+				return ""
+			}
+		}
+
+		if v, ok := memo[name]; ok {
+			return v
+		}
+
+		for _, b := range bindings {
+			if b.Name == name {
+				v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, makeBindingFunc(ctx, log, namespacedClient, bindings, append(stack, name)))
+				if err != nil {
+					log.Info("warning: unable to resolve binding; using empty string", "name", b.Name, "error", err)
+					v = ""
+				}
+				memo[name] = v
+				return v
+			}
+		}
+		memo[name] = ""
+		return ""
 	}
 }
 

@@ -20,11 +20,17 @@ type Sync struct {
 }
 
 // NamedSync is used when there's a list of syncs, so the name can be
-// mentioned elsewhere to refer to the particular sync.
+// mentioned elsewhere to refer to the particular sync. These always
+// have their own bindings because they are used in types that have
+// bindings to evaluate in the target cluster.
 type NamedSync struct {
 	// Name gives the sync a name so it can be correlated to the status
 	// +required
 	Name string `json:"name"`
+	// Bindings gives a list of variable bindings to use when evaluating the package spec in the sync
+	// +optional
+	Bindings []Binding `json:"bindings,omitempty"`
+	// +required
 	Sync `json:",inline"`
 }
 
@@ -65,6 +71,10 @@ type KustomizeSpec struct {
 	// +optional
 	// +kubebuilder:default=.
 	Path string `json:"path,omitempty"`
+	// Substitute gives a map of names to values to substitute in the
+	// YAML built from the kustomization.
+	// +optional
+	Substitute map[string]string `json:"substitute,omitempty"`
 }
 
 type SyncState string

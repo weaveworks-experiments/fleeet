@@ -95,12 +95,51 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to list selected clusters: %w", err)
 	}
 
-	kustomSpec, err := syncapi.KustomizationSpecFromPackage(mod.Spec.Sync.Package, source.GetName())
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
+	namespacedClient := client.NewNamespacedClient(r.Client, mod.Namespace)
 	for _, cluster := range clusters.Items {
+		// start with CLUSTER_NAME available to use in bindings
+		memo := map[string]string{
+			"CLUSTER_NAME": cluster.Name,
+		}
+
+		var bindingErr error
+		var makeBindingFunc func(stack []string) func(string) string
+		makeBindingFunc = func(stack []string) func(string) string {
+			return func(name string) string {
+				for i := range stack {
+					if stack[i] == name {
+						bindingErr = fmt.Errorf("circular binding %q", name)
+						return ""
+					}
+				}
+
+				if v, ok := memo[name]; ok {
+					return v
+				}
+				for _, b := range mod.Spec.ControlPlaneBindings {
+					if b.Name == name {
+						v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, makeBindingFunc(append(stack, name)))
+						if err != nil {
+							bindingErr = err
+							v = ""
+						}
+						memo[name] = v
+						return v
+					}
+				}
+				memo[name] = ""
+				return ""
+			}
+		}
+
+		kustomSpec, err := syncapi.KustomizationSpecFromPackage(mod.Spec.Sync.Package, source.GetName(), makeBindingFunc(nil))
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if bindingErr != nil {
+			return ctrl.Result{}, bindingErr
+		}
+
 		var kustom kustomv1.Kustomization
 		kustom.Namespace = mod.GetNamespace()
 		kustom.Name = fmt.Sprintf("%s-%s", mod.GetName(), cluster.GetName())
