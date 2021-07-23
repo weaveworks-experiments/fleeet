@@ -9,8 +9,8 @@ require (
 	github.com/go-logr/logr v0.4.0
 	github.com/onsi/ginkgo v1.15.0
 	github.com/onsi/gomega v1.10.5
-	github.com/squaremo/fleeet/assemblage v0.0.4
-	github.com/squaremo/fleeet/pkg v0.0.2-0.20210722151612-d2e6540e69d6
+	github.com/squaremo/fleeet/assemblage v0.0.5
+	github.com/squaremo/fleeet/pkg v0.0.2
 	k8s.io/api v0.21.0-beta.1
 	k8s.io/apimachinery v0.21.0
 	k8s.io/client-go v0.21.0-beta.1
