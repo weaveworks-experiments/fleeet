@@ -24,7 +24,7 @@ import (
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
-	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
 	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 

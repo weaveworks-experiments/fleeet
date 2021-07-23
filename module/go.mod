@@ -1,4 +1,4 @@
-module github.com/squaremo/fleeet/control
+module github.com/squaremo/fleeet/module
 
 go 1.15
 

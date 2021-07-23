@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
 	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 

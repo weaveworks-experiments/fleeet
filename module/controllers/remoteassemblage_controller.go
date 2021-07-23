@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
-	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
 )
 
 // RemoteAssemblageReconciler reconciles a RemoteAssemblage object
