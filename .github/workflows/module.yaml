@@ -43,4 +43,4 @@ jobs:
         GOPRIVATE: github.com/squaremo/fleeet
         GOPATH: /home/runner/work/_temp/_github_home/go
         KUBEBUILDER_ASSETS: ${{ github.workspace }}/kubebuilder/bin
-      run: make -C ./control test docker-build
+      run: make -C ./module test docker-build
