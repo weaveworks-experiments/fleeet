@@ -26,7 +26,7 @@ import (
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 
-	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
 	//+kubebuilder:scaffold:imports
 )
 

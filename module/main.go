@@ -24,8 +24,8 @@ import (
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
-	fleetv1 "github.com/squaremo/fleeet/control/api/v1alpha1"
-	"github.com/squaremo/fleeet/control/controllers"
+	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
+	"github.com/squaremo/fleeet/module/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
