@@ -167,9 +167,28 @@ spec:
       sync: ...
 ```
 
-# Questions
+# Open questions and suggestions
 
  * Should it be possible to use this with bootstrap modules? I don't think the logic of rollouts
    changes.
 
  * Could it look more like the generator syntax of KustomizationSet?
+
+ * Is there a better name than `Rollout`? (which is a verb as well as a noun, so suggests an
+   imperative).
+   - `ModuleSet` as in, a dynamic set of modules (if I keep "Module")
+   - `SyncSet` as in set of syncs
+   - `Assignment` as in assigment of configuration to clusters
+   - `Rolloutment` as in silly mix of ROllout and Deployment
+
+ * People may wish to see the history of a rollout -- When did the rollout start? How did the last
+   rollout go? One possibility is to keep a history in the status, like Deployment does.
+
+ * Alternative: have Rollout as a verb, and treat each as a one-off process. (Trouble: this sits
+   less well with Kubernetes' model, as it's an imperative, rather than a declared, desired state).
+
+ * The whole design to date requires all objects to be in the same namespace, including clusters and
+   their accompanying secrets. This is OK if there's a single team (or person!) that is running
+   everything; but what if you want to divide responsibility between e.g., platform admins who can
+   create clusters, and application developers who can roll their configuration out, but not access
+   clusters arbitrarily.
