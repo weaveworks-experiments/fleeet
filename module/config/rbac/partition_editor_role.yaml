@@ -1,0 +1,24 @@
+# permissions for end users to edit partitions.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: partition-editor-role
+rules:
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - partitions
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - partitions/status
+  verbs:
+  - get
