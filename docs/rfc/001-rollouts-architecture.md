@@ -118,6 +118,43 @@ To automate this, there is another new type `Rollout`. A rollout represents the 
 of a configuration to a set of clusters, and a strategy for handling changes. To start with, there
 are two strategies, described in the following sections. This is an extension point for future work.
 
+### Rollout mechanism
+
+TODO: explanation including a diagram.
+
+#### Keeping it atomic
+
+`BootstrapModule` and `Module` are expanded to `Kustomization` and `GitRepository` objects. If a
+Kustomization object changes name, to Flux this looks like a Kustomization object being removed then
+another Kustomization object being added (or an object being added then an object being removed) --
+which means it could remove the contents of a sync before restoring them, e.g., deleting a
+Deployment then creating it again. Since, ultimately, the Kustomization objects are named for the
+module that caused their creation, moving from one module to another will lead to a name change, and
+a break in continuity.
+
+A similar situation arises in the module controller during a rollout. Since it sees one module at a
+time, when a module is replaced with another it will either remove the first then add the second, or
+add the second then remove the first.
+
+To avoid breaking continuity, the design here needs to ensure two things when moving a cluster from
+one version of a configuration to another:
+
+ 1. the resulting Kustomization object is named the same; and,
+ 2. the change is effected in one transaction (i.e., by updating a single object).
+
+A simple, though not foolproof, way to ensure 1.) is to supply the name to use with the module. For
+modules that represent the same configuration at two different versions, the effect will be that
+moving from one to the other will update the explicitly-named Kustomization object rather than
+removing one and creating another.
+
+This has the downside that it doesn't make sense outside of rollouts, which can ensure that only one
+such module applies to any cluster at a time; it's possible to end up with a non-deterministic
+configuration.
+
+For 2.), it's necessary to rewrite the module controller so that it works a cluster at a time rather
+than a module at a time. By doing so, when the module assignments to a cluster change, the entire
+set of modules will be calculated in one go.
+
 ### Replacement rollout
 
 In a replacement rollout, the module as given by a template is applied simultaneously to all
