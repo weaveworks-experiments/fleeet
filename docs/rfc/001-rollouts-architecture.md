@@ -316,10 +316,24 @@ The implementation is to ensure there is a module with the template given, then 
 assignments to this module according to the parameters given -- e.g., if there are clusters that
 need updating, and fewer than `minUnreadyClusters`, update the assignment for another cluster.
 
-# Open questions and suggestions
+## Summary of changes proposed
 
- * Should it be possible to use this with bootstrap modules? I don't think the logic of rollouts
-   changes.
+ - `Module` loses the selector field, since it no longer assigns itself to clusters; that is
+   mediated by Rollouts or third party types.
+ - A new type `Rollout` is added, with the shape as above. The rollout controller maintains modules
+   or bootstrap modules according to its specification, and combines them into remote assemblages
+   and assemblages per cluster.
+ - `Assemblage` gets an optional field refering to the remote cluster, so it can be used to accumulate
+   bootstrap modules in the control plane
+   - consider renaming `RemoteAssemblage` to `ProxyAssemblage`
+   - consider reusing `RemoteAssemblage` to mean an assemblage constructed from bootstrap modules,
+     so it is easily distinguished from `Assemblage`. This might mean it refers to the bootstrap
+     modules rather than compiling into syncs.
+ - The assemblage controller now needs to run in the control plane, to expand assemblages
+   constructed from bootstrap modules into Flux primitives. The bootstrap module controller no
+   longer does this expansion, it just reports status.
+
+## Open questions and suggestions
 
  * Could it look more like the generator syntax of KustomizationSet?
 
@@ -329,6 +343,8 @@ need updating, and fewer than `minUnreadyClusters`, update the assignment for an
    - `SyncSet` as in set of syncs
    - `Assignment` as in assigment of configuration to clusters
    - `Rolloutment` as in silly mix of ROllout and Deployment
+   - perhaps `Module` should be renamed `Rollout`, since it describes to the application of a
+     configuration at a version (though not the target)
 
  * People may wish to see the history of a rollout -- When did the rollout start? How did the last
    rollout go? One possibility is to keep a history in the status, like Deployment does.
@@ -341,3 +357,9 @@ need updating, and fewer than `minUnreadyClusters`, update the assignment for an
    everything; but what if you want to divide responsibility between e.g., platform admins who can
    create clusters, and application developers who can roll their configuration out, but not access
    clusters arbitrarily.
+
+ * Are Modules and BootstrapModules still necessary, since they are no longer active objects (as in,
+   a module controller doesn't have anything to do, except perhaps report status)? In principle you
+   could go straight from Rollout templates to Assemblages. But, you would lose the ability to
+   easily see which versions of a config are extant, and it's a handy place to put the status. (That
+   could go in the rollout though, in theory). Removing them means fewer objects to deal with.
