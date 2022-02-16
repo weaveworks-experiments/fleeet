@@ -33,7 +33,7 @@ const (
 	interval = time.Second
 )
 
-var _ = Describe("remote assemblages", func() {
+var _ = Describe("proxy assemblages", func() {
 
 	var (
 		manager             ctrl.Manager
@@ -56,9 +56,8 @@ var _ = Describe("remote assemblages", func() {
 		})
 		Expect(err).ToNot(HaveOccurred())
 
-		remoteReconciler := &RemoteAssemblageReconciler{
+		remoteReconciler := &ProxyAssemblageReconciler{
 			Client: manager.GetClient(),
-			Log:    ctrl.Log.WithName("controllers").WithName("RemoteAssemblage"),
 			Scheme: manager.GetScheme(),
 		}
 		Expect(remoteReconciler.SetupWithManager(manager)).To(Succeed())
@@ -89,8 +88,8 @@ var _ = Describe("remote assemblages", func() {
 	Context("proxying", func() {
 		It("makes a sync in the downstream", func() {
 			// make a proxy object in the mgmt cluster
-			proxy := fleetv1.RemoteAssemblage{
-				Spec: fleetv1.RemoteAssemblageSpec{
+			proxy := fleetv1.ProxyAssemblage{
+				Spec: fleetv1.ProxyAssemblageSpec{
 					KubeconfigRef: fleetv1.LocalKubeconfigReference{Name: clusterSecret.Name},
 					Assemblage: asmv1.AssemblageSpec{
 						Syncs: []syncapi.NamedSync{
@@ -123,6 +122,8 @@ var _ = Describe("remote assemblages", func() {
 			}, timeout, interval).Should(BeTrue())
 			Expect(asm.Spec.Syncs).To(Equal(proxy.Spec.Assemblage.Syncs))
 		})
+
+		// TODO: check that downstream status is reflected back into the upstream object
 	})
 })
 

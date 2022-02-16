@@ -6,45 +6,96 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	fleetv1alpha1 "github.com/squaremo/fleeet/module/api/v1alpha1"
+	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
 )
 
 // ProxyAssemblageReconciler reconciles a ProxyAssemblage object
 type ProxyAssemblageReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+
+	// cache is a remote cluster client cache
+	cache *remote.ClusterCacheTracker
 }
 
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=proxyassemblages,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=proxyassemblages/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=proxyassemblages/finalizers,verbs=update
 
+// FIXME: access to secrets?
+
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the ProxyAssemblage object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *ProxyAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	log := log.FromContext(ctx)
 
-	// your logic here
+	var asm fleetv1.ProxyAssemblage
+	if err := r.Get(ctx, req.NamespacedName, &asm); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Let's go looking for the corresponding assemblage in the remote
+	// cluster.
+	clusterKey := client.ObjectKey{
+		Namespace: asm.Namespace,
+		// HACK: the client cache accepts cluster keys, but we are
+		// going straight to the secret; the trim gets the former from
+		// the latter.
+		Name: strings.TrimSuffix(asm.Spec.KubeconfigRef.Name, "-kubeconfig"),
+	}
+	remoteClient, err := r.cache.GetClient(ctx, clusterKey)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("could not get client for remote cluster: %w", err)
+	}
+
+	log.V(1).Info("remote cluster connected", "cluster", clusterKey.Name)
+
+	var counterpart asmv1.Assemblage
+	counterpart.Name = asm.Name
+	counterpart.Namespace = asm.Namespace
+	op, err := controllerutil.CreateOrUpdate(ctx, remoteClient, &counterpart, func() error {
+		counterpart.Spec = asm.Spec.Assemblage
+		return nil
+	})
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("while create/update counterpart in downstream: %w", err)
+	}
+
+	switch op {
+	case controllerutil.OperationResultNone,
+		controllerutil.OperationResultUpdated:
+		asm.Status.Syncs = counterpart.Status.Syncs
+	case controllerutil.OperationResultCreated:
+		// TODO set a condition saying the downstream is created
+	}
+
+	if err = r.Status().Update(ctx, &asm); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ProxyAssemblageReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	c, err := remote.NewClusterCacheTracker(mgr.GetLogger(), mgr)
+	if err != nil {
+		return err
+	}
+	r.cache = c
+
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&fleetv1alpha1.ProxyAssemblage{}).
+		For(&fleetv1.ProxyAssemblage{}).
 		Complete(r)
 }
