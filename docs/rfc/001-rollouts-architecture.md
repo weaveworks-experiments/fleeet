@@ -5,14 +5,13 @@
 
 ## Summary
 
-This RFC describes a mechanism for controlling rollouts, and how to build specific rollout
-primitives upon that mechanism.
+This RFC describes changes to the design to facilitate "rollouts".
 
 ## Motivation and requirements
 
 A core requirement of this project is handling automated rollout of new configurations. A rollout in
 this context is the deployment of a versioned configuration to a set of clusters. There are several
-strategies for continuous delivery in which rollout automation helps:
+strategies for continuous delivery in which automation helps:
 
  - blue/green deployments, in which new configuration is rolled out to a parallel set of clusters,
    then the live system flipped to that set (e.g., by changing traffic routing rules);
@@ -26,10 +25,6 @@ For some if not all of the above strategies, integration points with external sy
 effect a reroute of traffic. In addition, there will be scenarios with requirements not anticipated
 here. For these reasons, the mechanism should in principle let third parties construct their own
 rollout automation.
-
-The current design makes "third party" rollouts tricky, because configurations are assigned to
-clusters using labels and label selectors, and to dynamically adjust which clusters get which
-versions of a configuration you would need to manipulate those labels and selectors.
 
 ## Current design
 
@@ -99,81 +94,18 @@ a module changes, it changes in every cluster selected:
 
 (`bar` has changed to `v2`)
 
-It would be possible in principle to add a rollout specification into the `Module` type, and
-implement it directly in the module controller by changing only some `RemoteAssemblage` objects at a
-time. However, this would make it harder to admit third party rollout logic, because it would either
-have to ignore (or replace) the module layer, or fight the built-in logic. This suggests that the
-mechanism for rollouts should be based on replacing one module (assignment to a cluster) for
-another, rather than updating a module.
-
-Abstractly, to make a change incrementally you would have to create a module with the new version,
-and change the assignment so that the new version is assigned to one selected cluster, and the old
-version to the remainder of the selected clusters. But any scheme which switches one module for
-another exposes a flaw in the current design: swapping one module for another is not atomic, as the
-next section explains.
-
-### Keeping it atomic
-
-`BootstrapModule` and `Module` are expanded to `Kustomization` and `GitRepository` objects. If a
-kustomization changes name, to Flux this looks like a kustomization being removed then another
-kustomization being added (or a kustomization being added then a kustomization being removed) --
-which means it could remove the contents of a sync before restoring them, e.g., deleting a
-`Deployment` then creating it again. Since, ultimately, the kustomizations are named for the module
-that caused their creation, moving from one module to another will lead to a name change, and a
-break in continuity.
-
-A similar situation arises in the module controller during an incremental rollout. Since it sees one
-module at a time, when a module is replaced with another it will either remove the first then add
-the second, or add the second then remove the first.
-
-To avoid breaking continuity, the design here needs to ensure two things when moving a cluster from
-one version of a configuration to another:
-
- 1. the resulting Kustomization object is named the same; and,
- 2. the change is effected in one transaction (i.e., by updating a single object).
-
-A simple way to ensure 1.) is for the name of the Kustomization to come from the single object that
-owns the modules representing the configuration versions (which is probably the object representing
-the rollout). The effect will be that moving from one to the other will update the explicitly-named
-Kustomization object rather than removing one and creating another.
-
-For 2.), it's necessary to rejig the API so that assigned modules are evaluated a cluster at a time
-rather than a module at a time. By doing so, when the module assignments to a cluster change, the
-entire set of modules will be calculated in one go.
-
 ## New design
 
-To recap the problems identified in the previous sections: rollouts require a mechanism for
-atomically replacing a module assignment with another. In other words, the "increment" in an
-incremental rollout should be a pointer flip, from one module to another, for a cluster at a time.
-
-There is already a place in which module assignments for a cluster are effectively recorded: the
-`Assemblage` and `RemoteAssemblage` types. At present, these objects are created and updated when a
-module selection changes:
-
-    module assignment (selection) change -> assemblage update
-
-By reversing this, it's possible to satisfy the requirement from above:
-
-    assemblage update -> module assignment change
-
-That is: an assemblage _represents_ the module assignments for a cluster, rather than _reflecting_
-assignments made elsewhere. To change the assignment, you change the assemblage.
-
-Making the assignment explicit at this level creates an affordance for controlling rollouts. For
-example, you can effect a simple incremental rollout by creating a module with the new configuration
-version, then changing assemblage objects from the existing module to the new module.
-
-The owner record is a weak reference -- if a cluster is deleted, its relation to modules goes with
-it. The module controller will need to clean up owner records for modules which are deleted.
+Rollouts require a mechanism for atomically updating from the old module spec to the new module
+spec, for a cluster at a time. There is already a place in which module assignments for a cluster
+are effectively recorded: the `RemoteAssemblage` type (loosely: "assemblages"). To implement
+rollouts, the module controller can update assemblages incrementally.
 
 ### BootstrapModules and rollouts
 
-The previous sections have not accounted for BootstrapModules, and elided between remote assemblages
-and assemblages in general, which was a minor sleight of hand. At present, (non-remote) assemblages
-are objects created in leaf clusters by the remote assemblage controller, which are expanded locally
-into Flux primitives (kustomizations and git repositories). There is no analogue to RemoteAssemblage
-in which the `BootstrapModule` assignments are recorded.
+The previous sections have not accounted for the `BootstrapModule` type, and elided between remote
+assemblages and assemblages in general. But there is a crucial difference: there is no analogue to
+`RemoteAssemblage` for `BootstrapModule`.
 
 This shows the current design:
 
@@ -206,60 +138,53 @@ This shows the current design:
                                         └────────────┘      | |
 ```
 
-Bootstrap modules do not need to be proxied, because they will expand to Flux primitives that are
-applied remotely -- that is the essential difference between BootstrapModules and Modules. This
-means that unlike modules, there is not a place for assignments to be updated explicitly. However:
-notice the other thing that is different -- an assemblage in the leaf cluster reflects the
-assignment of modules to that cluster. The same could be made the case for bootstrap modules:
+Bootstrap modules do not need to be proxied, because they will expand to Flux primitives in the
+control plane, to be applied remotely -- that is the essential difference between bootstrap modules
+and modules. This means that unlike modules, there is no place for sync specs to be updated
+incrementally. To fix this, a new type is introduced:
 
 ```
-                                                                 │ │
-                  Control Plane cluster                          │ │      Leaf cluster
-                                                                 │ │
-                                                                 │ │                            ┌────────────┐
-     ┌──────────────────┐                                        │ │                            │            │
-     │                  │                                        │ │                            │ Flux prims ├─┐
-     │     Module       ├─┐              ┌───────────────────┐   │ │     ┌───────────────┐      │            │ │
-     │                  │ │   aggregate  │                   │   │ │     │               │      └─┬──────────┘ ├─┐
-     └─┬────────────────┘ ├─┐ ──────────►│ RemoteAssemblage  ├───┴─┴────►│  Assemblage   ├──────► │  ...       │ │
-       │  ...             │ │            │                   │  proxy    │               │expand  └─┬──────────┘ │
-       └─┬────────────────┘ │            └───────────────────┘   │ │     └───────────────┘          │  ...       │
-         │  ...             │                                    │ │                                └────────────┘
-         └──────────────────┘                                    │ │
-                                                                 │ │
-                                                                 │ │
-┌─────────────────┐       ┌────────────────┐                     │ │
-│                 │aggre- │                │                     │ │
-│ BootstrapModule ├──────►│   Assemblage   │                     │ │
-│                 │gate   │                │ ┌────────────┐      │ │
-└─────────────────┘       └──────┬─────────┘ │            │      │ │
-                                 │           │ Flux prims ├─┐ ───┴─┴──────►
-                                 │           │            │ │   apply
-                                 │ expand    └─┬──────────┘ ├─┐  │ │
-                                 └──────────►  │  ...       │ │  │ │
-                                               └─┬──────────┘ │  | |
-                                                 │  ...       │  | |
-                                                 └────────────┘  | |
+                                                                  │ │
+                   Control Plane cluster                          │ │      Leaf cluster
+                                                                  │ │
+                                                                  │ │                            ┌────────────┐
+      ┌──────────────────┐                                        │ │                            │            │
+      │                  │                                        │ │                            │ Flux prims ├─┐
+      │     Module       ├─┐              ┌───────────────────┐   │ │     ┌───────────────┐      │            │ │
+      │                  │ │   aggregate  │                   │   │ │     │               │      └─┬──────────┘ ├─┐
+      └─┬────────────────┘ ├─┐ ──────────►│ RemoteAssemblage  ├───┴─┴────►│ Assemblage    ├──────► │  ...       │ │
+        │  ...             │ │            │                   │  proxy    │               │expand  └─┬──────────┘ │
+        └─┬────────────────┘ │            └───────────────────┘   │ │     └───────────────┘          │  ...       │
+          │  ...             │                                    │ │                                └────────────┘
+          └──────────────────┘                                    │ │
+                                                                  │ │
+                                                                  │ │
+ ┌─────────────────┐                  ┌──────────────────┐        │ │
+ │                 │    aggregate     │                  │        │ │
+ │ BootstrapModule ├─┐ ──────────────►│ DirectAssemblage │        │ │
+ │                 │ │                │                  │        │ │
+ └─┬───────────────┘ ├─┐              └──┬───────────────┘        │ │
+   │  ...            │ │                 │                        │ │
+   └─┬───────────────┘ │              expand                      │ │
+     │  ...            │                 │    ┌────────────┐      │ │
+     └─────────────────┘                 │    │            │      │ │
+                                         └───►│ Flux prims ├─┐ ───┴─┴──────►
+                                              │            │ │   apply
+                                              └─┬──────────┘ ├─┐  │ │
+                                                │  ...       │ │  │ │
+                                                └─┬──────────┘ │  │ │
+                                                  │  ...       │
+                                                  └────────────┘
 ```
 
 This makes bootstrap modules amenable to rollouts in the same way as modules.
 
-### Rollouts
+### Rollout automation
 
-It is now possible to explicitly assign modules to clusters -- but if modules no longer select
-clusters, what manages the assignments?
-
-To control the assignment of modules to clusters, there is a new type `Rollout`. A rollout
-represents the dynamic assignment of a configuration to a set of clusters, as a selector, and a
-strategy for effecting changes. To start with, there are two strategies, described in the following
-sections. This is an extension point for future work, since third parties can use the same mechanism
-to construct their own rollout automation.
-
-#### Rollout mechanism
-
-Rollout automation operates by replacing the module assignments in clusters, incrementally.
-
-TODO: more explanation, and diagram.
+Rollout automation works by replacing the sync records in assemblages. To do this incrementally, the
+controller will usually need to check how many of the sync records have the most recent
+specification, and have successfully been synced. The rollout strategy (and any accompanying
+parameters) specifies when the controller can update more sync records.
 
 #### Replacement rollout
 
@@ -268,7 +193,7 @@ clusters matching a selector.
 
 ```yaml
 apiVersion: fleet.squaremo.dev/v1alpha1
-kind: Rollout
+kind: Module
 metadata:
   name: replace
   namespace: default
@@ -282,11 +207,13 @@ spec:
       sync: ...
 ```
 
-The implementation is to maintain a module with the details given in the template, and assign it to
-all remote assemblage objects that match the selector. When the template is changed, the module is
-updated in place.
+The implementation is roughly the following:
 
-This is the analogue of a `Module` from before this RFC.
+ - find or create an assemblage object for all clusters that match the selector
+ - for each assemblage, make sure there is a sync record with the latest sync specification from
+   this module.
+
+This is the equivalent of `Module` behaviour in the current design.
 
 #### Incremental rollout
 
@@ -296,7 +223,7 @@ new version to all clusters.
 
 ```yaml
 apiVersion: fleet.squaremo.dev/v1alpha1
-kind: Rollout
+kind: Module
 metadata:
   name: staging-canary
   namespace: default
@@ -312,37 +239,50 @@ spec:
       sync: ...
 ```
 
-The implementation is to ensure there is a module with the template given, then incrementally move
-assignments to this module according to the parameters given -- e.g., if there are clusters that
-need updating, and fewer than `minUnreadyClusters`, update the assignment for another cluster.
+The algorithm is roughly this:
+
+ - find or create an assemblage for each cluster that's selected
+ - count the number of assemblages for which the sync record for this module have not successfully
+   synced; if fewer than `maxUnreadyClusters`, pick one remote assemblage that has an out-of-date
+   sync record and update it.
+
+### Implementing third party rollout automation
+
+TODO explanation, and at least this change:
+ - expanding bindings moves to the remote/direct assemblage controllers, so that it doesn't have to
+   be reimplemented in any my-module controller
 
 ## Summary of changes proposed
 
- - `Module` loses the selector field, since it no longer assigns itself to clusters; that is
-   mediated by Rollouts or third party types.
- - A new type `Rollout` is added, with the shape as above. The rollout controller maintains modules
-   or bootstrap modules according to its specification, and combines them into remote assemblages
-   and assemblages per cluster.
- - `Assemblage` gets an optional field refering to the remote cluster, so it can be used to accumulate
-   bootstrap modules in the control plane
+ - `Module` and `BootstrapModule` gain rollout strategy fields, as in the examples given above. The
+   module controller and bootstrap module controller implement the rollout algorithms.
+ - `DirectAssemblage` is a new type that represents the bootstrap module assignments for a cluster;
+   the bootstrap module controller constructs the direct assemblages, and the direct assemblage
+   controller expands syncs into Flux primitives
    - consider renaming `RemoteAssemblage` to `ProxyAssemblage`
-   - consider reusing `RemoteAssemblage` to mean an assemblage constructed from bootstrap modules,
-     so it is easily distinguished from `Assemblage`. This might mean it refers to the bootstrap
-     modules rather than compiling into syncs.
- - The assemblage controller now needs to run in the control plane, to expand assemblages
-   constructed from bootstrap modules into Flux primitives. The bootstrap module controller no
-   longer does this expansion, it just reports status.
+   - consider reusing `RemoteAssemblage` to mean an assemblage constructed from bootstrap
+     modules.
+ - Expanding control-plane bindings is now done by the assemblage controllers, so that third party
+   automation doesn't need to reimplement it.
+
+## Alternatives considered
+
+TODO expand on these.
+
+ - Rollouts as a layer on modules (against: atomicity of changes, and more objects)
+ - Referring to modules in RemoteAssemblage (against: then you'd have to build other rollout automation from scratch)
+ - Represent module assignment in another object, so it's not conflated with multiplexing (against:
+   another object with the same information; ownership v GC)
 
 ## Open questions and suggestions
 
- * Could it look more like the generator syntax of KustomizationSet?
+ * Could the module spec look more like the generator syntax of KustomizationSet?
 
- * Is there a better name than `Rollout`? (which is a verb as well as a noun, so suggests an
-   imperative).
-   - `ModuleSet` as in, a dynamic set of modules (if I keep "Module")
+ * Is there a better name than `Module`? (surely!)
+   - `ModuleSet` as in, a dynamic set of modules
    - `SyncSet` as in set of syncs
    - `Assignment` as in assigment of configuration to clusters
-   - `Rolloutment` as in silly mix of ROllout and Deployment
+   - `Rolloutment` as in silly mix of Rollout and Deployment
    - perhaps `Module` should be renamed `Rollout`, since it describes to the application of a
      configuration at a version (though not the target)
 
@@ -357,9 +297,3 @@ need updating, and fewer than `minUnreadyClusters`, update the assignment for an
    everything; but what if you want to divide responsibility between e.g., platform admins who can
    create clusters, and application developers who can roll their configuration out, but not access
    clusters arbitrarily.
-
- * Are Modules and BootstrapModules still necessary, since they are no longer active objects (as in,
-   a module controller doesn't have anything to do, except perhaps report status)? In principle you
-   could go straight from Rollout templates to Assemblages. But, you would lose the ability to
-   easily see which versions of a config are extant, and it's a handy place to put the status. (That
-   could go in the rollout though, in theory). Removing them means fewer objects to deal with.
