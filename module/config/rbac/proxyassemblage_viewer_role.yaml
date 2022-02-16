@@ -1,0 +1,20 @@
+# permissions for end users to view proxyassemblages.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: proxyassemblage-viewer-role
+rules:
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - proxyassemblages
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - fleet.squaremo.dev
+  resources:
+  - proxyassemblages/status
+  verbs:
+  - get
