@@ -89,7 +89,7 @@ clusters:
 		// creating one.
 		requiredAsm[cluster.GetName()] = struct{}{}
 
-		asm := &fleetv1.RemoteAssemblage{}
+		asm := &fleetv1.ProxyAssemblage{}
 		asm.Namespace = cluster.GetNamespace()
 		asm.Name = cluster.GetName()
 
@@ -174,12 +174,12 @@ clusters:
 
 			bindings := append(bindingsFromControlPlane, mod.Spec.Sync.Bindings...)
 
-			// Each RemoteAssemblage is owned by each of the modules
+			// Each ProxyAssemblage is owned by each of the modules
 			// assigned to it. This is for the sake of indexing.
 			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
 				return err
 			}
-			// Each RemoteAssemblage is _specially_ owned by the
+			// Each ProxyAssemblage is _specially_ owned by the
 			// cluster to which it pertains. This is so that removing
 			// the cluster will garbage collect the remote assemblage.
 			if err := controllerutil.SetControllerReference(&cluster, asm, r.Scheme); err != nil {
@@ -235,7 +235,7 @@ clusters:
 
 	// Find all assemblages indexed as owned by (i.e., including) this
 	// module
-	var asms fleetv1.RemoteAssemblageList
+	var asms fleetv1.ProxyAssemblageList
 	if err := r.List(ctx, &asms, client.InNamespace(req.Namespace), client.MatchingFields{assemblageOwnerKey: req.Name}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
 	}
@@ -295,13 +295,13 @@ func incrementSummary(summary *fleetv1.SyncSummary, sync syncapi.SyncStatus) {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// This sets up an index on the Module owners of RemoteAssemblage
+	// This sets up an index on the Module owners of ProxyAssemblage
 	// objects. This complements the Watch on assemblage owners,
 	// below: that enqueues all the modules related to an assemblage
 	// that has changed, while this helps get the assemblages related
 	// to a module.
-	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &fleetv1.RemoteAssemblage{}, assemblageOwnerKey, func(obj client.Object) []string {
-		asm := obj.(*fleetv1.RemoteAssemblage)
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &fleetv1.ProxyAssemblage{}, assemblageOwnerKey, func(obj client.Object) []string {
+		asm := obj.(*fleetv1.ProxyAssemblage)
 		var moduleOwners []string
 		for _, owner := range asm.GetOwnerReferences() {
 			// FIXME: make this more reliable? What are the
@@ -319,12 +319,12 @@ func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.Module{}).
 
-		// Enqueue a Module any time a RemoteAssemblage that records
+		// Enqueue a Module any time a ProxyAssemblage that records
 		// it as an owner is changed. This cannot use "Owns" because
-		// more than one module can be an owner of a RemoteAssemblage
+		// more than one module can be an owner of a ProxyAssemblage
 		// (and none will be the controller owner).
 		Watches(
-			&source.Kind{Type: &fleetv1.RemoteAssemblage{}},
+			&source.Kind{Type: &fleetv1.ProxyAssemblage{}},
 			&handler.EnqueueRequestForOwner{
 				OwnerType:    &fleetv1.Module{},
 				IsController: false,
