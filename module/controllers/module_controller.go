@@ -39,8 +39,8 @@ const (
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules/finalizers,verbs=update
-//+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages,verbs=get;list;watch;create;update;patch;delete
 
+//+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=proxyassemblages,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to

@@ -7,7 +7,6 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -16,8 +15,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
+	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+
 	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
+	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
 // RemoteAssemblageReconciler reconciles a RemoteAssemblage object
@@ -34,10 +35,12 @@ type RemoteAssemblageReconciler struct {
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages/finalizers,verbs=update
 
-// FIXME: access to secrets?
+//+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
+// Reconcile moves the cluster closer to the desired state, as specified in the named
+// RemoteAssemblage. Usually this means making sure each sync in the assemblage has an up-to-date
+// Flux primitive to represent it.
 func (r *RemoteAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("remoteassemblage", req.NamespacedName)
 
@@ -46,44 +49,80 @@ func (r *RemoteAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Let's go looking for the corresponding assemblage in the remote
-	// cluster.
-	clusterKey := client.ObjectKey{
-		Namespace: asm.Namespace,
-		// HACK: the client cache accepts cluster keys, but we are
-		// ging straight to the secret; the trim gets the former from
-		// the latter.
-		Name: strings.TrimSuffix(asm.Spec.KubeconfigRef.Name, "-kubeconfig"),
-	}
-	remoteClient, err := r.cache.GetClient(ctx, clusterKey)
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("could not get client for remote cluster: %w", err)
+	// TODO: go through the syncs and create a Kustomization object for each sync, pointing at the
+	// source it references.
+	clusterName := asm.Spec.KubeconfigRef.Name
+	clusterName = clusterName[:len(clusterName)-len("-kubeconfig")] // FIXME this is a hack, while types refer to kubeconfig secrets rather than e.g., clusters
+
+	// Used to get any resources mentioned in controlPlaneBindings
+	namespacedClient := client.NewNamespacedClient(r.Client, asm.GetNamespace())
+	for _, sync := range asm.Spec.Syncs {
+		// start with CLUSTER_NAME available to use in bindings
+		memo := map[string]string{
+			"CLUSTER_NAME": clusterName,
+		}
+
+		var bindingErr error
+		var makeBindingFunc func(stack []string) func(string) string
+		makeBindingFunc = func(stack []string) func(string) string {
+			return func(name string) string {
+				for i := range stack {
+					if stack[i] == name {
+						bindingErr = fmt.Errorf("circular binding %q", name)
+						return ""
+					}
+				}
+
+				if v, ok := memo[name]; ok {
+					return v
+				}
+				for _, b := range sync.ControlPlaneBindings {
+					if b.Name == name {
+						v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, makeBindingFunc(append(stack, name)))
+						if err != nil {
+							bindingErr = err
+							v = ""
+						}
+						memo[name] = v
+						return v
+					}
+				}
+				memo[name] = ""
+				return ""
+			}
+		}
+
+		kustomSpec, err := syncapi.KustomizationSpecFromPackage(sync.Package, sync.SourceRef.Name, makeBindingFunc(nil))
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if bindingErr != nil {
+			return ctrl.Result{}, bindingErr
+		}
+
+		var kustom kustomv1.Kustomization
+		kustom.Namespace = asm.GetNamespace()
+		kustom.Name = fmt.Sprintf("%s-%s", sync.Name, clusterName) // FIXME may need to hash one or both to limit size
+		op, err := controllerutil.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
+			kustom.Spec = kustomSpec
+			// each kustomization is controlled by the assemblage; if the asssemblage goes, so does the kustomization
+			if err := controllerutil.SetControllerReference(&asm, &kustom, r.Scheme); err != nil {
+				return err
+			}
+
+			kustom.Spec.KubeConfig = &kustomv1.KubeConfig{}
+			kustom.Spec.KubeConfig.SecretRef.Name = asm.Spec.KubeconfigRef.Name
+
+			return nil
+		})
+
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		log.V(1).Info("created/updated kustomization", "name", kustom.GetName(), "operation", op)
 	}
 
-	log.V(1).Info("remote cluster connected", "cluster", clusterKey.Name)
-
-	var counterpart asmv1.Assemblage
-	counterpart.Name = asm.Name
-	counterpart.Namespace = asm.Namespace
-	op, err := controllerutil.CreateOrUpdate(ctx, remoteClient, &counterpart, func() error {
-		counterpart.Spec = asm.Spec.Assemblage
-		return nil
-	})
-	if err != nil {
-		return ctrl.Result{}, fmt.Errorf("while create/update counterpart in downstream: %w", err)
-	}
-
-	switch op {
-	case controllerutil.OperationResultNone,
-		controllerutil.OperationResultUpdated:
-		asm.Status.Syncs = counterpart.Status.Syncs
-	case controllerutil.OperationResultCreated:
-		// TODO set a condition saying the downstream is created
-	}
-
-	if err = r.Status().Update(ctx, &asm); err != nil {
-		return ctrl.Result{}, err
-	}
+	// TODO: report that status of each sync
 
 	return ctrl.Result{}, nil
 }
