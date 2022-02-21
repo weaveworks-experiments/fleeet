@@ -33,7 +33,7 @@ type ProxyAssemblageReconciler struct {
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=proxyassemblages/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=proxyassemblages/finalizers,verbs=update
 
-// FIXME: access to secrets?
+//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.

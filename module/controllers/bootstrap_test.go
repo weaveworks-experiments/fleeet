@@ -6,7 +6,7 @@ package controllers
 
 import (
 	"context"
-	"fmt"
+	//"fmt"
 	//	"path/filepath"
 	//	"time"
 
@@ -24,8 +24,8 @@ import (
 	// "sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	// ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
-	meta "github.com/fluxcd/pkg/apis/meta"
+	//kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	//meta "github.com/fluxcd/pkg/apis/meta"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 
 	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
@@ -169,8 +169,8 @@ var _ = Describe("bootstrap module controller", func() {
 	)
 
 	BeforeEach(func() {
-		// Create clusters so I can check e.g., that there's a
-		// Kustomization per cluster, targeting the cluster.
+		// Create clusters so I can check e.g., that there's a RemoteAssemblage per cluster,
+		// targeting the cluster.
 		clusters = make(map[string]*clusterv1.Cluster)
 		for i := 0; i < 3; i++ {
 			cluster := &clusterv1.Cluster{}
@@ -182,7 +182,7 @@ var _ = Describe("bootstrap module controller", func() {
 
 	})
 
-	It("creates source", func() {
+	It("creates a source per module", func() {
 		// Check there's a GitRepository created for the module
 		var src sourcev1.GitRepository
 		Eventually(func() bool {
@@ -196,63 +196,38 @@ var _ = Describe("bootstrap module controller", func() {
 		Expect(metav1.IsControlledBy(&src, &mod)).To(BeTrue())
 	})
 
-	It("expands to a kustomization per cluster", func() {
-		var kustoms kustomv1.KustomizationList
+	It("creates a RemoteAssemblage per cluster", func() {
+		expectedClusters := make(map[string]*clusterv1.Cluster)
+		for n, v := range clusters {
+			expectedClusters[n] = v
+		}
+
+		var asms fleetv1.RemoteAssemblageList
 		Eventually(func() bool {
-			if err := k8sClient.List(context.TODO(), &kustoms, client.InNamespace(namespace.Name)); err != nil {
+			if err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name)); err != nil {
 				return false
 			}
-			return len(kustoms.Items) >= len(clusters)
+			return len(asms.Items) >= len(clusters)
 		}, "5s", "1s").Should(BeTrue())
-		Expect(len(kustoms.Items)).To(Equal(len(clusters)))
+		Expect(len(asms.Items)).To(Equal(len(clusters)))
 
-		// Check each Kustomization is controlled by the module, owned
-		// by a cluster, targets the cluster, and has the
-		// BootstrapModule sync with expanded bindings.
-
-		for _, kustom := range kustoms.Items {
-			// the kustomization spec is what the module says
-			Expect(kustom.Spec.SourceRef.Kind).To(Equal("GitRepository"))
-			Expect(kustom.Spec.SourceRef.Name).To(Equal(mod.Name)) // == src.Name
-			Expect(kustom.Spec.Path).To(Equal(mod.Spec.Sync.Package.Kustomize.Path))
-
-			// the module owns the ksutomization
-			controller := metav1.GetControllerOf(&kustom)
-			Expect(controller).NotTo(BeNil())
-			Expect(controller.Kind).To(Equal("BootstrapModule"))
-			Expect(controller.Name).To(Equal(mod.Name))
-
-			var clusterName string
-
-			// one cluster owns the kustomization, and that cluster is
-			// targeted by the kubeconfig
-			ownersThatAreCluster := 0
-			for _, owner := range kustom.GetOwnerReferences() {
-				if owner.Kind == "Cluster" {
-					Expect(clusters).To(HaveKey(owner.Name))
-					Expect(kustom.Spec.KubeConfig).To(Equal(&kustomv1.KubeConfig{
-						SecretRef: meta.LocalObjectReference{
-							Name: fmt.Sprintf("%s-kubeconfig", owner.Name),
-						},
-					}))
-					ownersThatAreCluster++
-					clusterName = owner.Name
-					// remove from consideration
-					delete(clusters, owner.Name)
-				}
+		for _, asm := range asms.Items {
+			clusterName := asm.Spec.KubeconfigRef.Name[:len(asm.Spec.KubeconfigRef.Name)-len("-kubeconfig")]
+			Expect(expectedClusters).To(HaveKey(clusterName))
+			delete(expectedClusters, clusterName)
+			// check properties of assemblage: has the expected syncs, owner
+			// TODO owner
+			syncs := asm.Spec.Syncs
+			Expect(len(syncs)).To(Equal(1))
+			sync := syncs[0]
+			switch sync.Name {
+			case mod.Name:
+				Expect(sync.SourceRef.Name).ToNot(BeEmpty())
+			default:
+				Fail("unexpected sync in assemblage spec: " + sync.Name)
 			}
-			Expect(ownersThatAreCluster).To(Equal(1))
-			Expect(clusterName).ToNot(BeEmpty())
-
-			// bindings are expanded
-			Expect(kustom.Spec.PostBuild).NotTo(BeNil())
-			Expect(kustom.Spec.PostBuild.Substitute).NotTo(BeNil())
-			substitutions := kustom.Spec.PostBuild.Substitute
-			Expect(substitutions).To(Equal(map[string]string{
-				"cluster.name": clusterName,
-			}))
 		}
-		// All the clusters were accounted for.
-		Expect(clusters).To(BeEmpty())
+		Expect(expectedClusters).To(BeEmpty())
 	})
+
 })
