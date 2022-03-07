@@ -94,23 +94,10 @@ a module changes, it changes in every cluster selected:
 
 (`bar` has changed to `v2`)
 
-## New design
-
-Rollouts require a mechanism for atomically updating from the old module spec to the new module
-spec, for a cluster at a time. There is already a place in which module assignments for a cluster
-are effectively recorded: the `RemoteAssemblage` type (loosely: "assemblages"). To implement
-rollouts, the module controller can update assemblages incrementally.
-
-### BootstrapModules and rollouts
-
-The previous sections have not accounted for the `BootstrapModule` type, and elided between remote
-assemblages and assemblages in general. But there is a crucial difference: there is no analogue to
-`RemoteAssemblage` for `BootstrapModule`.
-
-This shows the current design:
+The mechanism for `BootstrapModule` is different. This shows the how `Module` and `BootstrapModule`
+are handled differently:
 
 ```
-
                                                             │ │
              Control Plane cluster                          │ │      Leaf cluster
                                                             │ │
@@ -118,7 +105,7 @@ This shows the current design:
 ┌──────────────────┐                                        │ │                            │            │
 │                  │                                        │ │                            │ Flux prims ├─┐
 │     Module       ├─┐              ┌───────────────────┐   │ │     ┌───────────────┐      │            │ │
-│                  │ │              │                   │   │ │     │               │      └─┬──────────┘ ├─┐
+│                  │ │    aggregate │                   │   │ │     │               │      └─┬──────────┘ ├─┐
 └─┬────────────────┘ ├─┐ ──────────►│ RemoteAssemblage  ├───┴─┴────►│  Assemblage   ├──────► │  ...       │ │
   │  ...             │ │            │                   │  proxy    │               │expand  └─┬──────────┘ │
   └─┬────────────────┘ │            └───────────────────┘   │ │     └───────────────┘          │  ...       │
@@ -140,8 +127,21 @@ This shows the current design:
 
 Bootstrap modules do not need to be proxied, because they will expand to Flux primitives in the
 control plane, to be applied remotely -- that is the essential difference between bootstrap modules
-and modules. This means that unlike modules, there is no place for sync specs to be updated
-incrementally. To fix this, a new type is introduced:
+and modules.
+
+## New design
+
+Rollouts require a mechanism for atomically updating from the old module spec to the new module
+spec, for a cluster at a time. There is already a place in which module assignments for a cluster
+are effectively recorded: the `RemoteAssemblage` type. To implement rollouts, the module controller
+can update assemblages incrementally.
+
+### BootstrapModules and rollouts
+
+As the previous section explained, there is no analogue to `RemoteAssemblage` for
+`BootstrapModule`. This means that unlike modules, there is no place for a bootstrap module to be
+updated incrementally. To fix this, a new type is introduced (and names shuffled to be more
+appropriate):
 
 ```
                                                                   │ │
@@ -151,9 +151,9 @@ incrementally. To fix this, a new type is introduced:
       ┌──────────────────┐                                        │ │                            │            │
       │                  │                                        │ │                            │ Flux prims ├─┐
       │     Module       ├─┐              ┌───────────────────┐   │ │     ┌───────────────┐      │            │ │
-      │                  │ │   aggregate  │                   │   │ │     │               │      └─┬──────────┘ ├─┐
-      └─┬────────────────┘ ├─┐ ──────────►│ RemoteAssemblage  ├───┴─┴────►│ Assemblage    ├──────► │  ...       │ │
-        │  ...             │ │            │                   │  proxy    │               │expand  └─┬──────────┘ │
+      │                  │ │   aggregate  │ ProxyAssemblage   │   │ │     │               │      └─┬──────────┘ ├─┐
+      └─┬────────────────┘ ├─┐ ──────────►│ (was              ├───┴─┴────►│  Assemblage   ├──────► │  ...       │ │
+        │  ...             │ │            │  RemoteAssemblage)│  proxy    │               │expand  └─┬──────────┘ │
         └─┬────────────────┘ │            └───────────────────┘   │ │     └───────────────┘          │  ...       │
           │  ...             │                                    │ │                                └────────────┘
           └──────────────────┘                                    │ │
@@ -161,8 +161,8 @@ incrementally. To fix this, a new type is introduced:
                                                                   │ │
  ┌─────────────────┐                  ┌──────────────────┐        │ │
  │                 │    aggregate     │                  │        │ │
- │ BootstrapModule ├─┐ ──────────────►│ DirectAssemblage │        │ │
- │                 │ │                │                  │        │ │
+ │ BootstrapModule ├─┐ ──────────────►│ RemoteAssemblage │        │ │
+ │                 │ │                │ (new)            │        │ │
  └─┬───────────────┘ ├─┐              └──┬───────────────┘        │ │
    │  ...            │ │                 │                        │ │
    └─┬───────────────┘ │              expand                      │ │
@@ -176,6 +176,14 @@ incrementally. To fix this, a new type is introduced:
                                                   │  ...       │
                                                   └────────────┘
 ```
+
+In tabular form:
+
+| Type | Job |
+|------|-----|
+| Assemblage | Specify syncs to be expanded into Flux primitives, within a downstream |
+| ProxyAssemblage | Maintain an Assemblage in a downstream, from upstream |
+| RemoteAssemblage | Specify syncs to be expanded into Flux primitives targeting a downstream |
 
 This makes bootstrap modules amenable to rollouts in the same way as modules.
 
@@ -243,25 +251,21 @@ The algorithm is roughly this:
 
  - find or create an assemblage for each cluster that's selected
  - count the number of assemblages for which the sync record for this module have not successfully
-   synced; if fewer than `maxUnreadyClusters`, pick one remote assemblage that has an out-of-date
-   sync record and update it.
+   synced; if fewer than `maxUnreadyClusters`, pick one assemblage that has an out-of-date sync
+   record and update it.
 
 ### Implementing third party rollout automation
 
-TODO explanation, and at least this change:
- - expanding bindings moves to the remote/direct assemblage controllers, so that it doesn't have to
-   be reimplemented in any my-module controller
+Third parties can implement their own rollout automation by manipulating assemblages.
 
 ## Summary of changes proposed
 
  - `Module` and `BootstrapModule` gain rollout strategy fields, as in the examples given above. The
    module controller and bootstrap module controller implement the rollout algorithms.
- - `DirectAssemblage` is a new type that represents the bootstrap module assignments for a cluster;
-   the bootstrap module controller constructs the direct assemblages, and the direct assemblage
-   controller expands syncs into Flux primitives
-   - consider renaming `RemoteAssemblage` to `ProxyAssemblage`
-   - consider reusing `RemoteAssemblage` to mean an assemblage constructed from bootstrap
-     modules.
+ - The current `RemoteAssemblage` type is renamed to `ProxyAssemblage`
+ - `RemoteAssemblage` now names a new type that represents the bootstrap module assignments for a
+   cluster; the bootstrap module controller constructs the remote assemblages, and the remote
+   assemblage controller expands syncs into Flux primitives
  - Expanding control-plane bindings is now done by the assemblage controllers, so that third party
    automation doesn't need to reimplement it.
 
@@ -270,7 +274,8 @@ TODO explanation, and at least this change:
 TODO expand on these.
 
  - Rollouts as a layer on modules (against: atomicity of changes, and more objects)
- - Referring to modules in RemoteAssemblage (against: then you'd have to build other rollout automation from scratch)
+ - Referring to modules in RemoteAssemblage (against: then you'd have to build other rollout
+   automation from scratch)
  - Represent module assignment in another object, so it's not conflated with multiplexing (against:
    another object with the same information; ownership v GC)
 
@@ -297,3 +302,12 @@ TODO expand on these.
    everything; but what if you want to divide responsibility between e.g., platform admins who can
    create clusters, and application developers who can roll their configuration out, but not access
    clusters arbitrarily.
+
+ * How does recovery work? You need the ability to:
+  - pull the handbrake: stop where you are
+  - pin a problematic cluster where it is, and continue
+  - roll back to the previous state safely
+  - roll forward
+  - Assumption: you are never going to rebuild the whole fleet to the state that it's in. But you might want to recover:
+    - the control plane
+    - individual clusters to a "known good" state (i.e., possibly before you started a rollout)
