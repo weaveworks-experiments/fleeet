@@ -9,11 +9,19 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/cluster-api/controllers/remote"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 
@@ -49,10 +57,30 @@ func (r *RemoteAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// TODO: go through the syncs and create a Kustomization object for each sync, pointing at the
-	// source it references.
 	clusterName := asm.Spec.KubeconfigRef.Name
 	clusterName = clusterName[:len(clusterName)-len("-kubeconfig")] // FIXME this is a hack, while types refer to kubeconfig secrets rather than e.g., clusters
+
+	// Check if the kubeconfig secret exists. This is a workaround of a sort, because this
+	// controller creates Flux primitives referring to the secret, and the Flux controllers should
+	// back off when the secret is not available. However, a new Cluster object typically appears
+	// minutes before its secret, by which time back-off intervals can become significant. To be
+	// more responsive, the following will balk without creating Flux primitives when the secret
+	// isn't present, and rely on the secret creation event to trigger another reconciliation.
+
+	// TODO: this early exit won't clean up Flux primitives that were created before a secret went
+	// missing.
+	var kubeconfig corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{
+		Namespace: req.NamespacedName.Namespace,
+		Name:      asm.Spec.KubeconfigRef.Name,
+	}, &kubeconfig); err != nil {
+		if client.IgnoreNotFound(err) != nil {
+			return ctrl.Result{}, err
+		}
+		// TODO: mark as stalled using condition
+		log.Info("secret not found", "name", asm.Spec.KubeconfigRef.Name)
+		return ctrl.Result{}, nil
+	}
 
 	// Used to get any resources mentioned in controlPlaneBindings
 	namespacedClient := client.NewNamespacedClient(r.Client, asm.GetNamespace())
@@ -127,6 +155,8 @@ func (r *RemoteAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return ctrl.Result{}, nil
 }
 
+const kubeconfigSecretField = ".spec.kubeconfigRef.name"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *RemoteAssemblageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	c, err := remote.NewClusterCacheTracker(mgr.GetLogger(), mgr)
@@ -135,7 +165,41 @@ func (r *RemoteAssemblageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	r.cache = c
 
+	// This index keeps track of RemoteAssemblage objects that reference a given secret. When a
+	// secret is created or updated, those assemblage objects need to be examined.
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &fleetv1.RemoteAssemblage{}, kubeconfigSecretField, func(raw client.Object) []string {
+		asm := raw.(*fleetv1.RemoteAssemblage)
+		return []string{asm.Spec.KubeconfigRef.Name}
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.RemoteAssemblage{}).
+		Watches(
+			&source.Kind{Type: &corev1.Secret{}},
+			handler.EnqueueRequestsFromMapFunc(r.assemblagesForSecret),
+			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		Complete(r)
+}
+
+func (r *RemoteAssemblageReconciler) assemblagesForSecret(secret client.Object) []reconcile.Request {
+	var list fleetv1.RemoteAssemblageList
+	options := &client.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector(kubeconfigSecretField, secret.GetName()),
+		Namespace:     secret.GetNamespace(),
+	}
+	if err := r.List(context.TODO() /* ugh */, &list, options); err != nil {
+		return nil
+	}
+	requests := make([]reconcile.Request, len(list.Items))
+	for i, item := range list.Items {
+		requests[i] = reconcile.Request{
+			NamespacedName: types.NamespacedName{
+				Namespace: item.GetNamespace(),
+				Name:      item.GetName(),
+			},
+		}
+	}
+	return requests
 }

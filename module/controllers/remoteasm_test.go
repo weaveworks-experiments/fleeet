@@ -12,7 +12,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	// corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	// "k8s.io/apimachinery/pkg/runtime"
 	//"k8s.io/apimachinery/pkg/types"
@@ -49,7 +48,7 @@ var _ = Describe("remote assemblage controller", func() {
 
 		remoteasmReconciler := &RemoteAssemblageReconciler{
 			Client: manager.GetClient(),
-			Log:    ctrl.Log.WithName("controllers").WithName("BootstrapModule"),
+			Log:    ctrl.Log.WithName("controllers").WithName("RemoteAssemblage"),
 			Scheme: manager.GetScheme(),
 		}
 		Expect(remoteasmReconciler.SetupWithManager(manager)).To(Succeed())
@@ -70,23 +69,25 @@ var _ = Describe("remote assemblage controller", func() {
 	})
 
 	var (
-		namespace         corev1.Namespace
-		clusterName       string
-		clusterSecretName string
-		source1           sourcev1.GitRepository
-		source2           sourcev1.GitRepository
-		asm               fleetv1.RemoteAssemblage
-		syncs             []fleetv1.RemoteSync
+		namespace     corev1.Namespace
+		clusterName   string
+		clusterSecret corev1.Secret
+		source1       sourcev1.GitRepository
+		source2       sourcev1.GitRepository
+		asm           fleetv1.RemoteAssemblage
+		syncs         []fleetv1.RemoteSync
 	)
 
 	BeforeEach(func() {
-		// this doesn't get used, it just needs to be supplied
-		clusterName = "cluster-" + randString(8)
-		clusterSecretName = clusterName + "-kubeconfig" // NB this coincides with the hack used to elide between clusters and their secrets, which itself corresponds to what ClusterAPI does
-
 		namespace = corev1.Namespace{}
 		namespace.Name = randString(5)
 		Expect(k8sClient.Create(context.TODO(), &namespace)).To(Succeed())
+
+		// this doesn't get used, it just needs to exist
+		clusterName = "cluster-" + randString(8)
+		clusterSecret.Namespace = namespace.Name
+		clusterSecret.Name = clusterName + "-kubeconfig" // NB this coincides with the hack used to elide between clusters and their secrets, which itself corresponds to what ClusterAPI does
+		Expect(k8sClient.Create(context.TODO(), &clusterSecret)).To(Succeed())
 
 		// create a git repository for eah sync to refer to; this would usually be done by whatever
 		// creates the assemblage (e.g., the bootstrap module controller)
@@ -144,7 +145,7 @@ var _ = Describe("remote assemblage controller", func() {
 		// create an assemblage to serve as the input
 		asm = fleetv1.RemoteAssemblage{
 			Spec: fleetv1.RemoteAssemblageSpec{
-				KubeconfigRef: fleetv1.LocalKubeconfigReference{Name: clusterSecretName},
+				KubeconfigRef: fleetv1.LocalKubeconfigReference{Name: clusterSecret.Name},
 				Syncs:         syncs,
 			},
 		}
@@ -176,7 +177,7 @@ var _ = Describe("remote assemblage controller", func() {
 			Expect(controller.Name).To(Equal(asm.Name))
 
 			Expect(kustom.Spec.KubeConfig).ToNot(BeNil())
-			Expect(kustom.Spec.KubeConfig.SecretRef.Name).To(Equal(clusterSecretName))
+			Expect(kustom.Spec.KubeConfig.SecretRef.Name).To(Equal(clusterSecret.Name))
 
 			// bindings are expanded, where they exist in the original sync
 			if kustom.Spec.SourceRef.Name == source1.Name {
