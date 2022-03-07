@@ -10,10 +10,11 @@ name="$1"
 
 echo "--> removing Cluster object and secret"
 kubectl delete --ignore-not-found secret "$name-kubeconfig"
-kubectl delete --ignore-not-found -f "$name.yaml"
+if [ -f "$name.yaml" ]; then kubectl delete --ignore-not-found -f "$name.yaml"; fi
 
 echo "--> deleting kind cluster $name"
 kind delete cluster --name "$name"
 
-echo "--> cleaning up kubeconfig"
-rm "$name.kubeconfig"
+echo "--> cleaning up kubeconfig and YAML"
+rm -f "$name.kubeconfig"
+rm -f "$name.yaml"

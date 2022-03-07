@@ -136,12 +136,22 @@ This ties another knot: how does a downstream cluster start syncing anything? Th
 a `BootstrapModule`, which will install the required GitOps Toolkit and Fleeet machinery on each
 downstream cluster.
 
-Now create bootstrap modules referring to these bits of repository:
+This goes in another directory, with an indirection in the form of a Kustomization to sync it. That
+is to avoid a chicken-and-egg problem of having a BootstrapModule object in an "earlier" sync (the
+one created by `flux bootstrap`) than the one that defines its type (the `Kustomization` object
+`fleeet-control`, created above).
+
+Create bootstrap modules referring to these bits of repository:
 
 ```bash
+# A directory for the fleet objects
+mkdir fleet
+# Sync the fleet directory
+flux create kustomization fleet-objects --source=flux-system --path=fleet --prune=true --depends-on=fleeet-control --export > upstream/fleet-objects-sync.yaml
+#
 # This bootstrap module will be applied to all downstream clusters that show up in the namespace. The module must be given a particular revision or tag (but not a branch -- that would be the same as using image:latest).
 CONFIG_VERSION=v0.1
-cat > upstream/bootstrap-worker.yaml <<EOF
+cat > fleet/bootstrap-worker.yaml <<EOF
 ---
 apiVersion: fleet.squaremo.dev/v1alpha1
 kind: BootstrapModule
@@ -179,8 +189,8 @@ spec:
 EOF
 #
 # Add it to git, to be synced to the management cluster
-git add upstream/bootstrap-worker.yaml
-git commit -s -m "Add bootstrap modules for downstream"
+git add fleet/bootstrap-worker.yaml upstream/fleet-objects-sync.yaml
+git commit -s -m "Add bootstrap modules and a sync for them"
 git push
 ```
 
@@ -193,6 +203,17 @@ git push
 sh create-cluster.sh cluster-1
 ```
 
+This creates a `kind` cluster and saves a kubeconfig for it to the current directory (e.g., as
+`cluster-1.kubeconfig`). So that you can create a bunch of clusters, which takes a while, and make
+it look like they are coming online later quickly, there's a separate step to make the cluster
+appear in the control plane:
+
+```bash
+sh enrol-cluster.sh cluster-1.kubeconfig
+```
+
+(NB you supply the kubeconfig file; the script will work out the cluster name from that.)
+
 See what happened in the downstream cluster:
 
 ```bash
@@ -200,11 +221,19 @@ kubectl --kubeconfig ./cluster-1.kubeconfig get namespace
 # and explore from there ...
 ```
 
+If something doesn't seem like it's working, you can have a look at the cluster nodes:
+
+```bash
+kubectl --kubeconfig ./cluster-1.kubeconfig describe nodes
+```
+
+You may see problems with the CNI plugin not working. Upgrading `kind` and trying again might help.
+
 ### Create a module
 
 ```bash
 # Create a module and add that to syncing
-cat > upstream/podinfo-module.yaml <<EOF
+cat > fleet/podinfo-module.yaml <<EOF
 apiVersion: fleet.squaremo.dev/v1alpha1
 kind: Module
 metadata:
@@ -222,7 +251,7 @@ spec:
       kustomize:
         path: ./kustomize
 EOF
-git add upstream/podinfo-module.yaml
+git add fleet/podinfo-module.yaml
 git commit -s -m "Add module for podinfo app"
 git push
 ```
@@ -247,3 +276,22 @@ kubectl --kubeconfig ./cluster-a.kubeconfig get deploy
 NAME      READY   UP-TO-DATE   AVAILABLE   AGE
 podinfo   2/2     2            2           5m17s
 ```
+
+# Cleaning up
+
+The script `delete-cluster.sh` will remove the Kubernetes resources associated with a cluster, the
+files created by scripts, and delete the `kind` cluster itself.
+
+If you need to clean things up manually, this is what might need to be deleted for, say,
+`cluster-1`:
+
+In the directory in which you ran scripts:
+ - a file `cluster-1.kubeconfig`
+ - a file `cluster-1.yaml`
+
+In the cluster:
+ - a `Cluster` object named `cluster-1`
+ - a `Secret` named `cluster-1-kubeconfig`
+ - a `RemoteAssemblage` named `cluster-1`
+ - Kustomization objects with names including `cluster-1`
+ - a `ProxyAssemblage` named `cluster-1`
