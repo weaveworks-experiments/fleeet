@@ -39,6 +39,11 @@ type BootstrapModuleReconciler struct {
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=bootstrapmodules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=bootstrapmodules/finalizers,verbs=update
 
+// These are what the controller creates:
+//+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
+
+// The controller watches these, to see when the selection changes
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 // Reconcile moves the cluster closer to the desired state, for a particular
@@ -94,7 +99,18 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Kind:       source.Kind,
 	}
 
+	summary := &fleetv1.SyncSummary{}
+
+	// Keep track of the assemblages which did require this module;
+	// afterwards, this will be helpful to determine the assemblages
+	// which need the module removed.
+	requiredAsm := map[string]struct{}{}
+
+clusters:
 	for _, cluster := range clusters.Items {
+		summary.Total++
+		requiredAsm[cluster.GetName()] = struct{}{}
+
 		asm := &fleetv1.RemoteAssemblage{}
 		asm.Namespace = cluster.GetNamespace()
 		asm.Name = cluster.GetName()
@@ -136,19 +152,96 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			return nil
 		})
 		if err != nil {
-			return ctrl.Result{}, err
+			summary.Failed++
+			log.Error(err, "updating remote assemblages", "assemblage", asm.Name)
+		} else {
+			log.V(1).Info("created/updated RemoteAssemblage", "name", asm.Name, "operation", op)
+			for _, sync := range asm.Status.Syncs {
+				if sync.Name == mod.Name {
+					switch sync.State {
+					case syncapi.StateSucceeded:
+						summary.Succeeded++
+					case syncapi.StateFailed:
+						summary.Failed++
+					default:
+						summary.Updating++
+					}
+					continue clusters // all done here
+				}
+			}
+			// no change made, but status not found -> updating
+			summary.Updating++
 		}
-		log.V(1).Info("created/updated RemoteAssemblage", "name", asm.Name, "operation", op)
 	}
-	// TODO find any redundant sources and assemblages and delete them
+
+	// Find all assemblages indexed as owned by (i.e., including) this
+	// module
+	var asms fleetv1.RemoteAssemblageList
+	if err := r.List(ctx, &asms, client.InNamespace(req.Namespace), client.MatchingFields{remoteAssemblageOwnerKey: req.Name}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
+	}
+
+	// This loop removes the bootstrap module from any assemblage for a cluster that _wasn't_
+	// selected. (Remember, these assemblages were selected because they were owned by this module,
+	// implying that at some point the module was assigned to the cluster)
+	for _, asm := range asms.Items {
+		if _, ok := requiredAsm[asm.GetName()]; !ok {
+			syncs := asm.Spec.Syncs
+			for i, sync := range syncs {
+				if sync.Name == mod.Name {
+					if _, err := controllerutil.CreateOrPatch(ctx, r.Client, &asm, func() error {
+						asm.Spec.Syncs = append(syncs[:i], syncs[i+1:]...)
+						removeOwnerRef(&mod, &asm)
+						return nil
+					}); err != nil {
+						log.Error(err, "removing module from remote assemblage", "assemblage", asm.Name)
+					}
+					// FIXME: can this `break` from the loop at this point?
+				}
+			}
+		}
+	}
+
+	mod.Status.ObservedSync = &mod.Spec.Sync
+	mod.Status.Summary = summary
+	if err := r.Status().Update(ctx, &mod); err != nil {
+		return ctrl.Result{}, fmt.Errorf("updating status of bootstrap module: %w", err)
+	}
 
 	return ctrl.Result{}, nil
 }
 
+const remoteAssemblageOwnerKey = "ownerBootstrapModule"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *BootstrapModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// This index is to conveniently find the remote assemblages that a bootstrap module owns (i.e.,
+	// is included in). The watch on RemoteAssemblages below will enqueue each bootstrap module
+	// owner of a remote aseemblage that has been updated.
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &fleetv1.RemoteAssemblage{}, remoteAssemblageOwnerKey, func(obj client.Object) []string {
+		asm := obj.(*fleetv1.RemoteAssemblage)
+		var moduleOwners []string
+		for _, owner := range asm.GetOwnerReferences() {
+			// FIXME: make this more reliable? What are the consequences of getting another API's
+			// BootstrapModule mixed in here? Something like this might be better:
+			// https://github.com/kubernetes-sigs/controller-runtime/blob/v0.11.1/pkg/handler/enqueue_owner.go#L46
+			if owner.Kind == fleetv1.KindBootstrapModule {
+				moduleOwners = append(moduleOwners, owner.Name)
+			}
+		}
+		return moduleOwners
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.BootstrapModule{}).
+		Watches(
+			&source.Kind{Type: &fleetv1.RemoteAssemblage{}},
+			&handler.EnqueueRequestForOwner{
+				OwnerType:    &fleetv1.BootstrapModule{},
+				IsController: false,
+			}).
 
 		// Enqueue all the BootstrapModule objects that pertain to a
 		// particular cluster

@@ -55,7 +55,7 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// --- create/update/delete remote assemblages
 
-	// Make sure there is a remote assemblage which includes this
+	// Make sure there is a proxy assemblage which includes this
 	// module, for every cluster that matches the selector.
 
 	var clusters clusterv1.ClusterList
@@ -214,7 +214,7 @@ clusters:
 		if err != nil {
 			// if something went wrong with this one, track it as a failure
 			summary.Failed++
-			log.Error(err, "updating remote assemblages", "assemblage", asm.Name)
+			log.Error(err, "updating proxy assemblages", "assemblage", asm.Name)
 		} else {
 			log.V(1).Info("updated assemblage", "assemblage", asm.Name, "operation", op)
 			for _, sync := range asm.Status.Syncs {
@@ -252,7 +252,7 @@ clusters:
 					asm.Spec.Assemblage.Syncs = append(syncs[:i], syncs[i+1:]...)
 					removeOwnerRef(&mod, &asm)
 					if err := r.Update(ctx, &asm); err != nil {
-						log.Error(err, "removing module from remote assemblage", "assemblage", asm.Name)
+						log.Error(err, "removing module from proxy assemblage", "assemblage", asm.Name)
 					}
 					// FIXME: can this `break` from the loop at this point?
 				}
@@ -272,7 +272,7 @@ clusters:
 
 func removeOwnerRef(nonOwner, obj metav1.Object) {
 	owners := obj.GetOwnerReferences()
-	newOwners := make([]metav1.OwnerReference, len(owners))
+	newOwners := make([]metav1.OwnerReference, 0, len(owners))
 	removeUID := nonOwner.GetUID()
 	for i := range owners {
 		if owners[i].UID != removeUID {

@@ -43,8 +43,11 @@ type RemoteAssemblageReconciler struct {
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages/finalizers,verbs=update
 
-//+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
+// The controller creates these:
 //+kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;create;update;patch;delete
+
+// The controller watches these, to see when it might need to retry for a cluster that was missing its secret
+//+kubebuilder:rbac:groups=core,resources=secrets,verbs=get;list;watch
 
 // Reconcile moves the cluster closer to the desired state, as specified in the named
 // RemoteAssemblage. Usually this means making sure each sync in the assemblage has an up-to-date
@@ -81,6 +84,8 @@ func (r *RemoteAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		log.Info("secret not found", "name", asm.Spec.KubeconfigRef.Name)
 		return ctrl.Result{}, nil
 	}
+
+	var syncStatus []fleetv1.SyncStatus
 
 	// Used to get any resources mentioned in controlPlaneBindings
 	namespacedClient := client.NewNamespacedClient(r.Client, asm.GetNamespace())
@@ -143,14 +148,26 @@ func (r *RemoteAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 			return nil
 		})
-
 		if err != nil {
 			return ctrl.Result{}, err
 		}
 		log.V(1).Info("created/updated kustomization", "name", kustom.GetName(), "operation", op)
+		status := fleetv1.SyncStatus{
+			Name: sync.Name,
+		}
+		switch op {
+		case controllerutil.OperationResultNone: // nothing was changed, so the sync state should reflect the status of the Flux primitive
+			status.State = syncapi.KustomizeReadyState(&kustom)
+		default:
+			status.State = syncapi.StateUpdating
+		}
+		syncStatus = append(syncStatus, status)
 	}
 
-	// TODO: report that status of each sync
+	asm.Status.Syncs = syncStatus
+	if err := r.Status().Update(ctx, &asm); err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }

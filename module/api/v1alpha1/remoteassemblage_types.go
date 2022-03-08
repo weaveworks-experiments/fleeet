@@ -63,7 +63,12 @@ type LocalKubeconfigReference struct {
 
 // RemoteAssemblageStatus defines the observed state of RemoteAssemblage
 type RemoteAssemblageStatus struct {
-	Syncs []syncapi.SyncStatus `json:"syncs,omitempty"`
+	Syncs []SyncStatus `json:"syncs,omitempty"`
+}
+
+type SyncStatus struct {
+	Name  string            `json:"name"`
+	State syncapi.SyncState `json:"state"`
 }
 
 //+kubebuilder:object:root=true
