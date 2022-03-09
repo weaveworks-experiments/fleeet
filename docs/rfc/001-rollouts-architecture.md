@@ -33,31 +33,31 @@ controller calculates the clusters selected, and adds or replaces a sync record,
 module, to a `RemoteAssemblage` object targeting the cluster:
 
 ```
-       ┌───────────────────selects───────────────────────────────────────────┐
-       │                                                                     │
-┌──────┴──────┐                                                              │
-│             │                                                              │
-│ Module foo  ├─ ─ ─ ─┐                                                      │
-│ v1          │                                                              │
-│             │       │         ┌──────────────────┐       ┌─────────────┐   │
-└─────────────┘                 │ RemoteAssemblage │       │             │◄──┘
-                      └─ ─ ─ ──►│  foo: v1         ├───────►  Cluster A  │
-                                │  bar: v1         │       │             │◄──┐
-                      ┌─ ─ ─ ──►│                  │       └─────────────┘   │
-                                └──────────────────┘                         │
-                      │                                                      │
-                                                                             │
-                      │         ┌──────────────────┐                         │
-                                │ RemoteAssemblage │      ┌──────────────┐   │
-                      │         │                  │      │              │   │
-┌─────────────┐       ├─ ─ ─ ──►│  bar: v1         ├──────►  Cluster B   │   │
-│             │                 │                  │      │              │◄──┤
-│ Module bar  ├─ ─ ─ ─┘         └──────────────────┘      └──────────────┘   │
-│ v1          │                                                              │
-│             │                                                              │
-└─────┬───────┘                                                              │
-      │                                                                      │
-      └────────────────────selects───────────────────────────────────────────┘
+                 ┌───────────────────selects───────────────────────────────────────────┐
+                 │                                                                     │
+          ┌──────┴──────┐                                                              │
+          │             │                                                              │
+          │ Module foo  ├─ ─ ─ ─┐                                                      │
+  ┌─────► │ v1          │                                                              │
+  │       │             │       │         ┌──────────────────┐       ┌─────────────┐   │
+  │       └─────────────┘                 │ RemoteAssemblage │       │             │◄──┘
+  │                             └─ ─ ─ ──►│  foo: v1         ├───────►  Cluster A  │
+  O                                       │  bar: v1         │       │             │◄──┐
+ -+- user                       ┌─ ─ ─ ──►│                  │       └─────────────┘   │
+  ^  creates                              └──────────────────┘                         │
+ / \ modules                    │                                                      │
+  │                                                                                    │
+  │                             │         ┌──────────────────┐                         │
+  │                                       │ RemoteAssemblage │      ┌──────────────┐   │
+  │                             │         │                  │      │              │   │
+  │       ┌─────────────┐       ├─ ─ ─ ──►│  bar: v1         ├──────►  Cluster B   │   │
+  │       │             │                 │                  │      │              │◄──┤
+  │       │ Module bar  ├─ ─ ─ ─┘         └──────────────────┘      └──────────────┘   │
+  └─────► │ v1          │                                                              │
+          │             │                                                              │
+          └─────┬───────┘                                                              │
+                │                                                                      │
+                └────────────────────selects───────────────────────────────────────────┘
 ```
 
 In the diagram above, the module `foo` selects only one of the clusters, while the module `bar`
@@ -256,7 +256,38 @@ The algorithm is roughly this:
 
 ### Implementing third party rollout automation
 
-Third parties can implement their own rollout automation by manipulating assemblages.
+Third parties can implement their own rollout automation by manipulating assemblages. The purpose of
+assemblages is to do the work required for each cluster, given a set of syncs. But there does not
+have to be only one assemblage per cluster; another controller can manage its own assemblages,
+manipulating the syncs to effect its own style of rollout.
+
+```
+                ┌───────────────────some selection logic here─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┐
+                │
+         ┌──────┴──────┐                                                              │
+         │             │
+         │ ThirdParty  ├───────┐                                                      │
+  ┌─────►│ foo         │       │
+  │      │             │       │         ┌──────────────────┐       ┌─────────────┐   │
+  │      └─────────────┘                 │  ProxyAssemblage │       │             │◄──┘
+  │                            │ ─ ─ ───►│  foo: v1         ├───────►  Cluster A  │
+  O                                      │  bar: v1         │       │             │◄──┐
+ -+-                           │ ─ ─ ───►│                  │       └─────────────┘
+  ^                       some rollout   └──────────────────┘                         │
+ / \                       logic here
+  │                                                                                   │
+  │                            │         ┌──────────────────┐
+  │                                      │  ProxyAssemblage │      ┌──────────────┐   │
+  │                            │         │                  │      │              │
+  │      ┌─────────────┐        ─ ─ ────►│  bar: v1         ├──────►  Cluster B   │   │
+  │      │             │       │         │                  │      │              │◄──┤
+  │      │ ThirdParty  ├───────┘         └──────────────────┘      └──────────────┘
+  └─────►│ bar         │                                                              │
+         │             │
+         └─────┬───────┘                                                              │
+               │
+               └────────────────────some selection logic here─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
+```
 
 ## Summary of changes proposed
 
