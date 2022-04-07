@@ -70,6 +70,7 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 		// This is a hack to work around https://github.com/fluxcd/source-controller/issues/315
 		source.Spec.Reference.Branch = "main"
+		// the resulting source is "controller owned" by the bootstrap module
 		return controllerutil.SetControllerReference(&mod, &source, r.Scheme)
 	})
 	if err != nil {
@@ -236,6 +237,8 @@ func (r *BootstrapModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.BootstrapModule{}).
+		Owns(&sourcev1.GitRepository{}).
+		// These are not "controller-owned" by the bootstrap modules, so this cannot use `.Owns`
 		Watches(
 			&source.Kind{Type: &fleetv1.RemoteAssemblage{}},
 			&handler.EnqueueRequestForOwner{

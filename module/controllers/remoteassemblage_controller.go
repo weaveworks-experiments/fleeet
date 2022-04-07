@@ -197,6 +197,7 @@ func (r *RemoteAssemblageReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&source.Kind{Type: &corev1.Secret{}},
 			handler.EnqueueRequestsFromMapFunc(r.assemblagesForSecret),
 			builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
+		Owns(&kustomv1.Kustomization{}).
 		Complete(r)
 }
 
