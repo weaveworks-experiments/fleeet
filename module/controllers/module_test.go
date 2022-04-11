@@ -119,6 +119,8 @@ var _ = Describe("modules", func() {
 					"environment": "production",
 				})
 				Expect(k8sClient.Create(context.Background(), cluster)).To(Succeed())
+				cluster.Status.ControlPlaneReady = true
+				Expect(k8sClient.Status().Update(context.Background(), cluster)).To(Succeed())
 			}
 		})
 
@@ -177,6 +179,8 @@ var _ = Describe("modules", func() {
 				newCluster.Name = "newcluster"
 				newCluster.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.TODO(), &newCluster)).To(Succeed())
+				newCluster.Status.ControlPlaneReady = true
+				Expect(k8sClient.Status().Update(context.Background(), &newCluster)).To(Succeed())
 
 				var newAsm fleetv1.ProxyAssemblage
 				Eventually(func() bool {
@@ -326,6 +330,8 @@ var _ = Describe("modules", func() {
 			cluster.Namespace = namespace.Name
 			cluster.Name = "clus-" + randString(5)
 			Expect(k8sClient.Create(context.TODO(), &cluster)).To(Succeed())
+			cluster.Status.ControlPlaneReady = true
+			Expect(k8sClient.Status().Update(context.Background(), &cluster)).To(Succeed())
 
 			module := fleetv1.Module{
 				Spec: fleetv1.ModuleSpec{

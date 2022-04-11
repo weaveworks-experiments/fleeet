@@ -21,6 +21,7 @@ rules:
   verbs:
   - get
   - list
+  - watch
 - apiGroups:
   - fleet.squaremo.dev
   resources:

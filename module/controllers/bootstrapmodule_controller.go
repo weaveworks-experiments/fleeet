@@ -109,6 +109,13 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 clusters:
 	for _, cluster := range clusters.Items {
+		// Don't bother if the cluster isn't marked as ready yet. Creating an assemblage targeting
+		// an unready cluster means lots of failures and back-off.
+		if !cluster.Status.ControlPlaneReady {
+			// TODO: should this be a separate field in the summary, e.g., "waiting"?
+			log.Info("waiting for cluster to be ready", "name", cluster.GetName())
+			continue
+		}
 		summary.Total++
 		requiredAsm[cluster.GetName()] = struct{}{}
 

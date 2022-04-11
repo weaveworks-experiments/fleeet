@@ -178,6 +178,8 @@ var _ = Describe("bootstrap module controller", func() {
 			cluster.Namespace = namespace.Name
 			clusters[cluster.Name] = cluster
 			Expect(k8sClient.Create(context.TODO(), cluster)).To(Succeed())
+			cluster.Status.ControlPlaneReady = true
+			Expect(k8sClient.Status().Update(context.Background(), cluster)).To(Succeed())
 		}
 
 	})

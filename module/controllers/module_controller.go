@@ -82,6 +82,13 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 clusters:
 	for _, cluster := range clusters.Items {
+		// Don't bother if the cluster isn't marked as ready yet. Creating an assemblage targeting
+		// an unready cluster means lots of failures and back-off.
+		if !cluster.Status.ControlPlaneReady {
+			// TODO: should this be a separate field in the summary, e.g., "waiting"?
+			log.Info("waiting for cluster to be ready", "name", cluster.GetName())
+			continue
+		}
 		summary.Total++
 		// This loop makes sure every cluster that matches the
 		// selector has a remote assemblage with the latest definition
