@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/cluster-api/controllers/remote"
@@ -19,6 +20,8 @@ import (
 	asmv1 "github.com/squaremo/fleeet/assemblage/api/v1alpha1"
 	fleetv1 "github.com/squaremo/fleeet/module/api/v1alpha1"
 )
+
+const proxyPollInterval = 20 * time.Second
 
 // ProxyAssemblageReconciler reconciles a ProxyAssemblage object
 type ProxyAssemblageReconciler struct {
@@ -84,7 +87,8 @@ func (r *ProxyAssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	return ctrl.Result{}, nil
+	// We don't get notified of things happening in the downstream cluster; so, requeue to poll instead.
+	return ctrl.Result{RequeueAfter: proxyPollInterval}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
