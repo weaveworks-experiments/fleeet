@@ -17,7 +17,7 @@ echo "--> create secret $name-kubeconfig"
 kubectl create secret generic "$name-kubeconfig" --from-file="value=$kubeconfig"
 
 host=$(yq eval '.networking.apiServerAddress' "kind.config")
-port=$(yq eval '.clusters[0].cluster.server'"$kubeconfig" | sed 's#https://.*:\([0-9]\{4,5\}\)#\1#')
+port=$(yq eval '.clusters[0].cluster.server' "$kubeconfig" | sed 's#https://.*:\([0-9]\{4,5\}\)#\1#')
 
 echo "<!> Using host $host from kind.config apiServerAddress, this is assumed to be"
 echo "    an IP address accessible from the control cluster. For example, the IP address"

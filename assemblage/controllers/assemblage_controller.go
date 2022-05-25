@@ -9,10 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fluxcd/pkg/apis/meta"
 	"github.com/go-logr/logr"
-	apimeta "k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -122,7 +119,7 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			if syncStatus.State == "" {
 				switch op {
 				case controllerutil.OperationResultNone:
-					syncStatus.State = readyState(&kustom)
+					syncStatus.State = syncapi.KustomizeReadyState(&kustom)
 				default:
 					syncStatus.State = syncapi.StateUpdating
 				}
@@ -139,25 +136,6 @@ func (r *AssemblageReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func readyState(obj meta.ObjectWithStatusConditions) syncapi.SyncState {
-	conditions := obj.GetStatusConditions()
-	c := apimeta.FindStatusCondition(*conditions, meta.ReadyCondition)
-	switch {
-	case c == nil:
-		return syncapi.StateUpdating
-	case c.Status == metav1.ConditionTrue:
-		return syncapi.StateSucceeded
-	case c.Status == metav1.ConditionFalse:
-		if c.Reason == meta.ReconciliationFailedReason {
-			return syncapi.StateFailed
-		} else {
-			return syncapi.StateUpdating
-		}
-	default: // FIXME possibly StateUnknown?
-		return syncapi.StateUpdating
-	}
 }
 
 func makeBindingFunc(ctx context.Context, log logr.Logger, namespacedClient client.Client, bindings []syncapi.Binding, stack []string) func(string) string {

@@ -39,8 +39,8 @@ const (
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=modules/finalizers,verbs=update
-//+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages,verbs=get;list;watch;create;update;patch;delete
 
+//+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=proxyassemblages,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -55,7 +55,7 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	// --- create/update/delete remote assemblages
 
-	// Make sure there is a remote assemblage which includes this
+	// Make sure there is a proxy assemblage which includes this
 	// module, for every cluster that matches the selector.
 
 	var clusters clusterv1.ClusterList
@@ -82,6 +82,13 @@ func (r *ModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 clusters:
 	for _, cluster := range clusters.Items {
+		// Don't bother if the cluster isn't marked as ready yet. Creating an assemblage targeting
+		// an unready cluster means lots of failures and back-off.
+		if !cluster.Status.ControlPlaneReady {
+			// TODO: should this be a separate field in the summary, e.g., "waiting"?
+			log.Info("waiting for cluster to be ready", "name", cluster.GetName())
+			continue
+		}
 		summary.Total++
 		// This loop makes sure every cluster that matches the
 		// selector has a remote assemblage with the latest definition
@@ -89,7 +96,7 @@ clusters:
 		// creating one.
 		requiredAsm[cluster.GetName()] = struct{}{}
 
-		asm := &fleetv1.RemoteAssemblage{}
+		asm := &fleetv1.ProxyAssemblage{}
 		asm.Namespace = cluster.GetNamespace()
 		asm.Name = cluster.GetName()
 
@@ -174,12 +181,12 @@ clusters:
 
 			bindings := append(bindingsFromControlPlane, mod.Spec.Sync.Bindings...)
 
-			// Each RemoteAssemblage is owned by each of the modules
+			// Each ProxyAssemblage is owned by each of the modules
 			// assigned to it. This is for the sake of indexing.
 			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
 				return err
 			}
-			// Each RemoteAssemblage is _specially_ owned by the
+			// Each ProxyAssemblage is _specially_ owned by the
 			// cluster to which it pertains. This is so that removing
 			// the cluster will garbage collect the remote assemblage.
 			if err := controllerutil.SetControllerReference(&cluster, asm, r.Scheme); err != nil {
@@ -214,7 +221,7 @@ clusters:
 		if err != nil {
 			// if something went wrong with this one, track it as a failure
 			summary.Failed++
-			log.Error(err, "updating remote assemblages", "assemblage", asm.Name)
+			log.Error(err, "updating proxy assemblages", "assemblage", asm.Name)
 		} else {
 			log.V(1).Info("updated assemblage", "assemblage", asm.Name, "operation", op)
 			for _, sync := range asm.Status.Syncs {
@@ -235,7 +242,7 @@ clusters:
 
 	// Find all assemblages indexed as owned by (i.e., including) this
 	// module
-	var asms fleetv1.RemoteAssemblageList
+	var asms fleetv1.ProxyAssemblageList
 	if err := r.List(ctx, &asms, client.InNamespace(req.Namespace), client.MatchingFields{assemblageOwnerKey: req.Name}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
 	}
@@ -252,7 +259,7 @@ clusters:
 					asm.Spec.Assemblage.Syncs = append(syncs[:i], syncs[i+1:]...)
 					removeOwnerRef(&mod, &asm)
 					if err := r.Update(ctx, &asm); err != nil {
-						log.Error(err, "removing module from remote assemblage", "assemblage", asm.Name)
+						log.Error(err, "removing module from proxy assemblage", "assemblage", asm.Name)
 					}
 					// FIXME: can this `break` from the loop at this point?
 				}
@@ -272,7 +279,7 @@ clusters:
 
 func removeOwnerRef(nonOwner, obj metav1.Object) {
 	owners := obj.GetOwnerReferences()
-	newOwners := make([]metav1.OwnerReference, len(owners))
+	newOwners := make([]metav1.OwnerReference, 0, len(owners))
 	removeUID := nonOwner.GetUID()
 	for i := range owners {
 		if owners[i].UID != removeUID {
@@ -295,13 +302,13 @@ func incrementSummary(summary *fleetv1.SyncSummary, sync syncapi.SyncStatus) {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	// This sets up an index on the Module owners of RemoteAssemblage
+	// This sets up an index on the Module owners of ProxyAssemblage
 	// objects. This complements the Watch on assemblage owners,
 	// below: that enqueues all the modules related to an assemblage
 	// that has changed, while this helps get the assemblages related
 	// to a module.
-	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &fleetv1.RemoteAssemblage{}, assemblageOwnerKey, func(obj client.Object) []string {
-		asm := obj.(*fleetv1.RemoteAssemblage)
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &fleetv1.ProxyAssemblage{}, assemblageOwnerKey, func(obj client.Object) []string {
+		asm := obj.(*fleetv1.ProxyAssemblage)
 		var moduleOwners []string
 		for _, owner := range asm.GetOwnerReferences() {
 			// FIXME: make this more reliable? What are the
@@ -319,12 +326,12 @@ func (r *ModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.Module{}).
 
-		// Enqueue a Module any time a RemoteAssemblage that records
+		// Enqueue a Module any time a ProxyAssemblage that records
 		// it as an owner is changed. This cannot use "Owns" because
-		// more than one module can be an owner of a RemoteAssemblage
+		// more than one module can be an owner of a ProxyAssemblage
 		// (and none will be the controller owner).
 		Watches(
-			&source.Kind{Type: &fleetv1.RemoteAssemblage{}},
+			&source.Kind{Type: &fleetv1.ProxyAssemblage{}},
 			&handler.EnqueueRequestForOwner{
 				OwnerType:    &fleetv1.Module{},
 				IsController: false,

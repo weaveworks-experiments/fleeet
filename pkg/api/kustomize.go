@@ -1,7 +1,11 @@
 package api
 
 import (
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	fluxmeta "github.com/fluxcd/pkg/apis/meta"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 
 	"github.com/squaremo/fleeet/pkg/expansion"
@@ -25,4 +29,23 @@ func KustomizationSpecFromPackage(pkg *PackageSpec, sourceName string, mapping f
 		}
 	}
 	return spec, nil
+}
+
+func KustomizeReadyState(obj *kustomv1.Kustomization) SyncState {
+	conditions := obj.GetStatusConditions()
+	c := apimeta.FindStatusCondition(*conditions, fluxmeta.ReadyCondition)
+	switch {
+	case c == nil:
+		return StateUpdating
+	case c.Status == metav1.ConditionTrue:
+		return StateSucceeded
+	case c.Status == metav1.ConditionFalse:
+		if c.Reason == fluxmeta.ReconciliationFailedReason {
+			return StateFailed
+		} else {
+			return StateUpdating
+		}
+	default: // FIXME possibly StateUnknown?
+		return StateUpdating
+	}
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2021 Michael Bridgen <mikeb@squaremobius.net>.
+Copyright 2021, 2022 Michael Bridgen <mikeb@squaremobius.net>.
 */
 
 package controllers
@@ -20,7 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
+	//kustomv1 "github.com/fluxcd/kustomize-controller/api/v1beta1"
 	sourcev1 "github.com/fluxcd/source-controller/api/v1beta1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
@@ -39,13 +39,16 @@ type BootstrapModuleReconciler struct {
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=bootstrapmodules/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=bootstrapmodules/finalizers,verbs=update
 
+// These are what the controller creates:
+//+kubebuilder:rbac:groups=fleet.squaremo.dev,resources=remoteassemblages,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
+
+// The controller watches these, to see when the selection changes
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
 
-//+kubebuilder:rbac:groups=source.toolkit.fluxcd.io,resources=gitrepositories,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=kustomize.toolkit.fluxcd.io,resources=kustomizations,verbs=get;list;watch;create;update;patch;delete
-
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
+// Reconcile moves the cluster closer to the desired state, for a particular
+// BootstrapModule. Usually this means making sure each selected cluster has a remote assemblage
+// containing the sync given by the module, referring to a source (GitRepository).
 func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := r.Log.WithValues("bootstrapmodule", req.NamespacedName)
 
@@ -56,14 +59,7 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	log.V(1).Info("found BootstrapModule")
 
-	// The job of this controller is to make sure each eligible
-	// cluster has a sync primitive targeting it. That means, in
-	// GitOps Toolkit terms, there is a Kustomization object using the
-	// cluster kubeconfig secret for each cluster, and a GitRepository
-	// for them to all use as a source.
-
-	// Create (or update) a source at which to point the
-	// kustomizations.
+	// Create (or update) a source at which to point the syncs.
 
 	var source sourcev1.GitRepository
 	source.Namespace = mod.Namespace
@@ -74,6 +70,7 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 		// This is a hack to work around https://github.com/fluxcd/source-controller/issues/315
 		source.Spec.Reference.Branch = "main"
+		// the resulting source is "controller owned" by the bootstrap module
 		return controllerutil.SetControllerReference(&mod, &source, r.Scheme)
 	})
 	if err != nil {
@@ -82,7 +79,9 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	log.Info("created/updated GitRepository", "name", source.Name, "operation", op)
 	// TODO set a condition saying the source is created
 
-	// For each eligible cluster, create a kustomization
+	// For each eligible cluster, ensure there's a RemoteAssemblage
+
+	// Find all the selected clusters
 	var clusters clusterv1.ClusterList
 	selector, err := metav1.LabelSelectorAsSelector(mod.Spec.Selector)
 	if err != nil {
@@ -95,89 +94,164 @@ func (r *BootstrapModuleReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("failed to list selected clusters: %w", err)
 	}
 
-	namespacedClient := client.NewNamespacedClient(r.Client, mod.Namespace)
+	sourceRef := fleetv1.SourceReference{
+		Name:       source.Name,
+		APIVersion: source.APIVersion,
+		Kind:       source.Kind,
+	}
+
+	summary := &fleetv1.SyncSummary{}
+
+	// Keep track of the assemblages which did require this module;
+	// afterwards, this will be helpful to determine the assemblages
+	// which need the module removed.
+	requiredAsm := map[string]struct{}{}
+
+clusters:
 	for _, cluster := range clusters.Items {
-		// start with CLUSTER_NAME available to use in bindings
-		memo := map[string]string{
-			"CLUSTER_NAME": cluster.Name,
+		// Don't bother if the cluster isn't marked as ready yet. Creating an assemblage targeting
+		// an unready cluster means lots of failures and back-off.
+		if !cluster.Status.ControlPlaneReady {
+			// TODO: should this be a separate field in the summary, e.g., "waiting"?
+			log.Info("waiting for cluster to be ready", "name", cluster.GetName())
+			continue
 		}
+		summary.Total++
+		requiredAsm[cluster.GetName()] = struct{}{}
 
-		var bindingErr error
-		var makeBindingFunc func(stack []string) func(string) string
-		makeBindingFunc = func(stack []string) func(string) string {
-			return func(name string) string {
-				for i := range stack {
-					if stack[i] == name {
-						bindingErr = fmt.Errorf("circular binding %q", name)
-						return ""
-					}
-				}
+		asm := &fleetv1.RemoteAssemblage{}
+		asm.Namespace = cluster.GetNamespace()
+		asm.Name = cluster.GetName()
 
-				if v, ok := memo[name]; ok {
-					return v
-				}
-				for _, b := range mod.Spec.ControlPlaneBindings {
-					if b.Name == name {
-						v, err := syncapi.ResolveBinding(ctx, namespacedClient, b, makeBindingFunc(append(stack, name)))
-						if err != nil {
-							bindingErr = err
-							v = ""
-						}
-						memo[name] = v
-						return v
-					}
-				}
-				memo[name] = ""
-				return ""
-			}
-		}
-
-		kustomSpec, err := syncapi.KustomizationSpecFromPackage(mod.Spec.Sync.Package, source.GetName(), makeBindingFunc(nil))
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		if bindingErr != nil {
-			return ctrl.Result{}, bindingErr
-		}
-
-		var kustom kustomv1.Kustomization
-		kustom.Namespace = mod.GetNamespace()
-		kustom.Name = fmt.Sprintf("%s-%s", mod.GetName(), cluster.GetName())
-		op, err := controllerutil.CreateOrUpdate(ctx, r.Client, &kustom, func() error {
-			kustom.Spec = kustomSpec
-			// each kustomization is controlled by the bootstrap
-			// module; if the module goes, so does the kustomization
-			if err := controllerutil.SetControllerReference(&mod, &kustom, r.Scheme); err != nil {
+		op, err := controllerutil.CreateOrUpdate(ctx, r.Client, asm, func() error {
+			// Each RemoteAssemblage is owned by each of the modules
+			// assigned to it. This is for the sake of indexing.
+			if err := controllerutil.SetOwnerReference(&mod, asm, r.Scheme); err != nil {
 				return err
 			}
-			// each kustomization is also owned by the cluster it
-			// targets, for the sake of good bookkeeping (and
-			// indexing)
-			if err := controllerutil.SetOwnerReference(&cluster, &kustom, r.Scheme); err != nil {
+			// Each RemoteAssemblage is _specially_ owned by the
+			// cluster to which it pertains. This is so that removing
+			// the cluster will garbage collect the remote assemblage.
+			if err := controllerutil.SetControllerReference(&cluster, asm, r.Scheme); err != nil {
 				return err
 			}
-
-			kustom.Spec.KubeConfig = &kustomv1.KubeConfig{}
-			kustom.Spec.KubeConfig.SecretRef.Name = fmt.Sprintf("%s-kubeconfig", cluster.GetName())
-
+			asm.Spec.KubeconfigRef = fleetv1.LocalKubeconfigReference{
+				Name: cluster.GetName() + "-kubeconfig", // FIXME refer to cluster instead?
+			}
+			syncs := asm.Spec.Syncs
+			for i, sync := range syncs {
+				if sync.Name == mod.Name {
+					// NB: CreateOrUpdate will avoid the update if the mutated object
+					// is deep-equal to the original. That helps this process reach a
+					// fixed point.
+					syncs[i].Package = mod.Spec.Sync.Package
+					syncs[i].ControlPlaneBindings = mod.Spec.ControlPlaneBindings
+					syncs[i].SourceRef = sourceRef
+					return nil
+				}
+			}
+			// not there -- add this module
+			asm.Spec.Syncs = append(syncs, fleetv1.RemoteSync{
+				Name:                 mod.Name,
+				Package:              mod.Spec.Sync.Package,
+				ControlPlaneBindings: mod.Spec.ControlPlaneBindings,
+				SourceRef:            sourceRef,
+			})
 			return nil
 		})
-
 		if err != nil {
-			return ctrl.Result{}, err
+			summary.Failed++
+			log.Error(err, "updating remote assemblages", "assemblage", asm.Name)
+		} else {
+			log.V(1).Info("created/updated RemoteAssemblage", "name", asm.Name, "operation", op)
+			for _, sync := range asm.Status.Syncs {
+				if sync.Name == mod.Name {
+					switch sync.State {
+					case syncapi.StateSucceeded:
+						summary.Succeeded++
+					case syncapi.StateFailed:
+						summary.Failed++
+					default:
+						summary.Updating++
+					}
+					continue clusters // all done here
+				}
+			}
+			// no change made, but status not found -> updating
+			summary.Updating++
 		}
-
-		log.V(1).Info("created/updated kustomization", "name", kustom.GetName(), "operation", op)
 	}
-	// TODO find any rogue kustomizations and delete them
+
+	// Find all assemblages indexed as owned by (i.e., including) this
+	// module
+	var asms fleetv1.RemoteAssemblageList
+	if err := r.List(ctx, &asms, client.InNamespace(req.Namespace), client.MatchingFields{remoteAssemblageOwnerKey: req.Name}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("listing assemblages for this module: %w", err)
+	}
+
+	// This loop removes the bootstrap module from any assemblage for a cluster that _wasn't_
+	// selected. (Remember, these assemblages were selected because they were owned by this module,
+	// implying that at some point the module was assigned to the cluster)
+	for _, asm := range asms.Items {
+		if _, ok := requiredAsm[asm.GetName()]; !ok {
+			syncs := asm.Spec.Syncs
+			for i, sync := range syncs {
+				if sync.Name == mod.Name {
+					if _, err := controllerutil.CreateOrPatch(ctx, r.Client, &asm, func() error {
+						asm.Spec.Syncs = append(syncs[:i], syncs[i+1:]...)
+						removeOwnerRef(&mod, &asm)
+						return nil
+					}); err != nil {
+						log.Error(err, "removing module from remote assemblage", "assemblage", asm.Name)
+					}
+					// FIXME: can this `break` from the loop at this point?
+				}
+			}
+		}
+	}
+
+	mod.Status.ObservedSync = &mod.Spec.Sync
+	mod.Status.Summary = summary
+	if err := r.Status().Update(ctx, &mod); err != nil {
+		return ctrl.Result{}, fmt.Errorf("updating status of bootstrap module: %w", err)
+	}
 
 	return ctrl.Result{}, nil
 }
 
+const remoteAssemblageOwnerKey = "ownerBootstrapModule"
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *BootstrapModuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// This index is to conveniently find the remote assemblages that a bootstrap module owns (i.e.,
+	// is included in). The watch on RemoteAssemblages below will enqueue each bootstrap module
+	// owner of a remote aseemblage that has been updated.
+	if err := mgr.GetFieldIndexer().IndexField(context.TODO(), &fleetv1.RemoteAssemblage{}, remoteAssemblageOwnerKey, func(obj client.Object) []string {
+		asm := obj.(*fleetv1.RemoteAssemblage)
+		var moduleOwners []string
+		for _, owner := range asm.GetOwnerReferences() {
+			// FIXME: make this more reliable? What are the consequences of getting another API's
+			// BootstrapModule mixed in here? Something like this might be better:
+			// https://github.com/kubernetes-sigs/controller-runtime/blob/v0.11.1/pkg/handler/enqueue_owner.go#L46
+			if owner.Kind == fleetv1.KindBootstrapModule {
+				moduleOwners = append(moduleOwners, owner.Name)
+			}
+		}
+		return moduleOwners
+	}); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&fleetv1.BootstrapModule{}).
+		Owns(&sourcev1.GitRepository{}).
+		// These are not "controller-owned" by the bootstrap modules, so this cannot use `.Owns`
+		Watches(
+			&source.Kind{Type: &fleetv1.RemoteAssemblage{}},
+			&handler.EnqueueRequestForOwner{
+				OwnerType:    &fleetv1.BootstrapModule{},
+				IsController: false,
+			}).
 
 		// Enqueue all the BootstrapModule objects that pertain to a
 		// particular cluster

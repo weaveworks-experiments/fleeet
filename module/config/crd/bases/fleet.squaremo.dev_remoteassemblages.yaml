@@ -36,118 +36,6 @@ spec:
           spec:
             description: RemoteAssemblageSpec defines the desired state of RemoteAssemblage
             properties:
-              assemblage:
-                description: Assemblage gives the specification for the assemblage
-                  to create downstream. It will be created with the same name as this
-                  object.
-                properties:
-                  syncs:
-                    items:
-                      description: NamedSync is used when there's a list of syncs,
-                        so the name can be mentioned elsewhere to refer to the particular
-                        sync. These always have their own bindings because they are
-                        used in types that have bindings to evaluate in the target
-                        cluster.
-                      properties:
-                        bindings:
-                          description: Bindings gives a list of variable bindings
-                            to use when evaluating the package spec in the sync
-                          items:
-                            description: Binding specifies how to obtain a value to
-                              bind to a name. The name can then be mentioned elsewhere
-                              in an object, and be replaced with the value as evaluated.
-                            properties:
-                              name:
-                                type: string
-                              objectFieldRef:
-                                properties:
-                                  apiVersion:
-                                    description: APIVersion gives the APIVersion (<group>/<version>)
-                                      for the object's type
-                                    type: string
-                                  fieldPath:
-                                    description: Path is a JSONPointer expression
-                                      for finding the value in the object identified
-                                    type: string
-                                  kind:
-                                    description: Kind gives the kind of the object's
-                                      type
-                                    type: string
-                                  name:
-                                    description: Name names the object
-                                    type: string
-                                required:
-                                - fieldPath
-                                - kind
-                                - name
-                                type: object
-                              value:
-                                type: string
-                            required:
-                            - name
-                            type: object
-                          type: array
-                        name:
-                          description: Name gives the sync a name so it can be correlated
-                            to the status
-                          type: string
-                        package:
-                          default:
-                            kustomize:
-                              path: .
-                          description: Package defines how to deal with the configuration
-                            at the source, e.g., if it's a kustomization (or YAML
-                            files)
-                          properties:
-                            kustomize:
-                              properties:
-                                path:
-                                  default: .
-                                  description: Path gives the path within the source
-                                    to treat as the Kustomization root.
-                                  type: string
-                                substitute:
-                                  additionalProperties:
-                                    type: string
-                                  description: Substitute gives a map of names to
-                                    values to substitute in the YAML built from the
-                                    kustomization.
-                                  type: object
-                              type: object
-                          type: object
-                        source:
-                          description: Source gives the specification for how to get
-                            the configuration to be synced
-                          properties:
-                            git:
-                              properties:
-                                url:
-                                  description: URL gives the URL for the git repository
-                                  type: string
-                                version:
-                                  description: Version gives either the revision or
-                                    tag at which to get the git repo
-                                  properties:
-                                    revision:
-                                      type: string
-                                    tag:
-                                      type: string
-                                  type: object
-                              required:
-                              - url
-                              - version
-                              type: object
-                          required:
-                          - git
-                          type: object
-                      required:
-                      - name
-                      - source
-                      type: object
-                    type: array
-                required:
-                - syncs
-                type: object
               kubeconfigRef:
                 description: KubeconfigRef refers to a secret with a kubeconfig for
                   the remote cluster.
@@ -158,8 +46,102 @@ spec:
                 required:
                 - name
                 type: object
+              syncs:
+                description: Syncs gives the list of sync specs, each specifying a
+                  config to apply to the remote cluster.
+                items:
+                  properties:
+                    controlPlaneBindings:
+                      description: ControlPlaneBindings gives a list of variable bindings
+                        to evaluate when constructing the sync primitives
+                      items:
+                        description: Binding specifies how to obtain a value to bind
+                          to a name. The name can then be mentioned elsewhere in an
+                          object, and be replaced with the value as evaluated.
+                        properties:
+                          name:
+                            type: string
+                          objectFieldRef:
+                            properties:
+                              apiVersion:
+                                description: APIVersion gives the APIVersion (<group>/<version>)
+                                  for the object's type
+                                type: string
+                              fieldPath:
+                                description: Path is a JSONPointer expression for
+                                  finding the value in the object identified
+                                type: string
+                              kind:
+                                description: Kind gives the kind of the object's type
+                                type: string
+                              name:
+                                description: Name names the object
+                                type: string
+                            required:
+                            - fieldPath
+                            - kind
+                            - name
+                            type: object
+                          value:
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type: array
+                    name:
+                      description: Name gives a name to use for this sync, so that
+                        updates can be stable (changing the sync spec will update
+                        objects rather than replace them)
+                      type: string
+                    package:
+                      default:
+                        kustomize:
+                          path: .
+                      description: Package defines how the sources is to be applied;
+                        e.g., by kustomize
+                      properties:
+                        kustomize:
+                          properties:
+                            path:
+                              default: .
+                              description: Path gives the path within the source to
+                                treat as the Kustomization root.
+                              type: string
+                            substitute:
+                              additionalProperties:
+                                type: string
+                              description: Substitute gives a map of names to values
+                                to substitute in the YAML built from the kustomization.
+                              type: object
+                          type: object
+                      type: object
+                    sourceRef:
+                      description: SourceRef gives a reference to the source to use
+                        in the sync primitive
+                      properties:
+                        apiVersion:
+                          description: APIVersion gives the API group and version
+                            of the source object, e.g., `source.toolkit.fluxcd.io/v1beta2`
+                          type: string
+                        kind:
+                          description: Kind gives the kind of the source object, e.g.,
+                            `GitRepository`
+                          type: string
+                        name:
+                          description: Name gives the name of the source (which is
+                            assumed to be in the same namespace as the referrer).
+                          type: string
+                      required:
+                      - apiVersion
+                      - kind
+                      - name
+                      type: object
+                  required:
+                  - name
+                  - sourceRef
+                  type: object
+                type: array
             required:
-            - assemblage
             - kubeconfigRef
             type: object
           status:
@@ -167,112 +149,14 @@ spec:
             properties:
               syncs:
                 items:
-                  description: SyncStatus gives the status of a specific sync.
                   properties:
-                    state:
-                      description: State gives the outcome of last applied sync spec.
+                    name:
                       type: string
-                    sync:
-                      description: Sync gives the last applied sync spec.
-                      properties:
-                        bindings:
-                          description: Bindings gives a list of variable bindings
-                            to use when evaluating the package spec in the sync
-                          items:
-                            description: Binding specifies how to obtain a value to
-                              bind to a name. The name can then be mentioned elsewhere
-                              in an object, and be replaced with the value as evaluated.
-                            properties:
-                              name:
-                                type: string
-                              objectFieldRef:
-                                properties:
-                                  apiVersion:
-                                    description: APIVersion gives the APIVersion (<group>/<version>)
-                                      for the object's type
-                                    type: string
-                                  fieldPath:
-                                    description: Path is a JSONPointer expression
-                                      for finding the value in the object identified
-                                    type: string
-                                  kind:
-                                    description: Kind gives the kind of the object's
-                                      type
-                                    type: string
-                                  name:
-                                    description: Name names the object
-                                    type: string
-                                required:
-                                - fieldPath
-                                - kind
-                                - name
-                                type: object
-                              value:
-                                type: string
-                            required:
-                            - name
-                            type: object
-                          type: array
-                        name:
-                          description: Name gives the sync a name so it can be correlated
-                            to the status
-                          type: string
-                        package:
-                          default:
-                            kustomize:
-                              path: .
-                          description: Package defines how to deal with the configuration
-                            at the source, e.g., if it's a kustomization (or YAML
-                            files)
-                          properties:
-                            kustomize:
-                              properties:
-                                path:
-                                  default: .
-                                  description: Path gives the path within the source
-                                    to treat as the Kustomization root.
-                                  type: string
-                                substitute:
-                                  additionalProperties:
-                                    type: string
-                                  description: Substitute gives a map of names to
-                                    values to substitute in the YAML built from the
-                                    kustomization.
-                                  type: object
-                              type: object
-                          type: object
-                        source:
-                          description: Source gives the specification for how to get
-                            the configuration to be synced
-                          properties:
-                            git:
-                              properties:
-                                url:
-                                  description: URL gives the URL for the git repository
-                                  type: string
-                                version:
-                                  description: Version gives either the revision or
-                                    tag at which to get the git repo
-                                  properties:
-                                    revision:
-                                      type: string
-                                    tag:
-                                      type: string
-                                  type: object
-                              required:
-                              - url
-                              - version
-                              type: object
-                          required:
-                          - git
-                          type: object
-                      required:
-                      - name
-                      - source
-                      type: object
+                    state:
+                      type: string
                   required:
+                  - name
                   - state
-                  - sync
                   type: object
                 type: array
             type: object

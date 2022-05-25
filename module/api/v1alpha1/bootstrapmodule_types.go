@@ -10,6 +10,8 @@ import (
 	syncapi "github.com/squaremo/fleeet/pkg/api"
 )
 
+const KindBootstrapModule = "BootstrapModule"
+
 // BootstrapModuleSpec defines the desired state of BootstrapModule
 type BootstrapModuleSpec struct {
 	// Selector gives the criteria for assigning this module to a

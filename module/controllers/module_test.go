@@ -119,6 +119,8 @@ var _ = Describe("modules", func() {
 					"environment": "production",
 				})
 				Expect(k8sClient.Create(context.Background(), cluster)).To(Succeed())
+				cluster.Status.ControlPlaneReady = true
+				Expect(k8sClient.Status().Update(context.Background(), cluster)).To(Succeed())
 			}
 		})
 
@@ -153,7 +155,7 @@ var _ = Describe("modules", func() {
 				matchModule.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.Background(), matchModule)).To(Succeed())
 
-				var asms fleetv1.RemoteAssemblageList
+				var asms fleetv1.ProxyAssemblageList
 				Eventually(func() bool {
 					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
 					return err == nil && len(asms.Items) == len(clusters)
@@ -177,8 +179,10 @@ var _ = Describe("modules", func() {
 				newCluster.Name = "newcluster"
 				newCluster.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.TODO(), &newCluster)).To(Succeed())
+				newCluster.Status.ControlPlaneReady = true
+				Expect(k8sClient.Status().Update(context.Background(), &newCluster)).To(Succeed())
 
-				var newAsm fleetv1.RemoteAssemblage
+				var newAsm fleetv1.ProxyAssemblage
 				Eventually(func() bool {
 					err := k8sClient.Get(context.TODO(), types.NamespacedName{
 						Namespace: namespace.Name,
@@ -215,7 +219,7 @@ var _ = Describe("modules", func() {
 				module.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.TODO(), module)).To(Succeed())
 
-				var asms fleetv1.RemoteAssemblageList
+				var asms fleetv1.ProxyAssemblageList
 				Eventually(func() bool {
 					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
 					return err == nil && len(asms.Items) == len(clusters)
@@ -281,7 +285,7 @@ var _ = Describe("modules", func() {
 				mod.Namespace = namespace.Name
 				Expect(k8sClient.Create(context.TODO(), mod)).To(Succeed())
 
-				var asms fleetv1.RemoteAssemblageList
+				var asms fleetv1.ProxyAssemblageList
 				Eventually(func() bool {
 					err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
 					return err == nil && len(asms.Items) == len(clusters)
@@ -326,6 +330,8 @@ var _ = Describe("modules", func() {
 			cluster.Namespace = namespace.Name
 			cluster.Name = "clus-" + randString(5)
 			Expect(k8sClient.Create(context.TODO(), &cluster)).To(Succeed())
+			cluster.Status.ControlPlaneReady = true
+			Expect(k8sClient.Status().Update(context.Background(), &cluster)).To(Succeed())
 
 			module := fleetv1.Module{
 				Spec: fleetv1.ModuleSpec{
@@ -337,7 +343,7 @@ var _ = Describe("modules", func() {
 			module.Name = "mod-" + randString(5)
 			Expect(k8sClient.Create(context.TODO(), &module)).To(Succeed())
 
-			var asms fleetv1.RemoteAssemblageList
+			var asms fleetv1.ProxyAssemblageList
 			Eventually(func() bool {
 				err := k8sClient.List(context.TODO(), &asms, client.InNamespace(namespace.Name))
 				return err == nil && len(asms.Items) > 0
