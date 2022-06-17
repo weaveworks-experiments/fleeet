@@ -1,0 +1,130 @@
+# -*- mode: Python -*-
+
+load("./tilt/library/project/Tiltfile", "project_enable")
+load("./tilt/library/flux/Tiltfile", "flux_bootstrap")
+load("./tilt/library/io/Tiltfile", "info", "warn", "file_write")
+load("./tilt/library/capi/Tiltfile", "capi_deploycrds", "capi_create_kubeconfig_secret", "capi_create_cluster_yaml")
+
+
+load("ext://uibutton", "cmd_button", "text_input")
+load('ext://secret', 'secret_yaml_generic')
+
+# set defaults
+version_settings(True, ">=0.22.2")
+
+settings = {
+    "deploy_capi_crds": True,
+    "kind_cluster_name": os.getenv("KIND_CLUSTER_NAME", "fleeet-mgmt"),
+    "github_token": os.getenv("GITHUB_TOKEN", ""),
+    "debug": {},
+}
+
+# global settings
+tilt_file = "./tilt-settings-mgmt.yaml" if os.path.exists("./tilt-settings-mgmt.yaml") else "./tilt-settings-mgmt.json"
+settings.update(read_yaml(
+    tilt_file,
+    default = {},
+))
+
+k8s_ctx = "kind-" + settings.get("kind_cluster_name")
+info("allowed k8s context={ctx}".format(ctx = k8s_ctx))
+allow_k8s_contexts(k8s_ctx)
+
+os.putenv("KIND_CLUSTER_NAME", settings.get("kind_cluster_name"))
+
+always_enable_projects = ["module"]
+
+projects = {
+    "module": {
+        "context": "module",
+        "image": "squaremo/fleeet-control",
+        "live_reload_deps": [
+            "main.go",
+            "go.mod",
+            "go.sum",
+            "../pkg",
+            "api",
+            "controllers"
+        ],
+        "kustomize_dir": "config/default",
+        "label": "module"
+    }
+}
+
+# kind_tenant_config = """
+# kind: Cluster
+# apiVersion: kind.x-k8s.io/v1alpha4
+# networking:
+#   apiServerAddress: "{kind_ip_address}"
+# """
+
+# cluster_tenant_template = """
+# apiVersion: cluster.x-k8s.io/v1alpha3
+# kind: Cluster
+# metadata:
+#   name: "{tenant_name}"
+# """
+
+# Users may define their own Tilt customizations in tilt.d. This directory is excluded from git and these files will
+# not be checked in to version control.
+def include_user_tilt_files():
+    user_tiltfiles = listdir("tilt.d")
+    for f in user_tiltfiles:
+        include(f)
+
+def enable_projects():
+    for name in get_projects():
+        p = projects.get(name)
+        project_enable(name, p, settings.get("debug").get(name, {}))
+        #enable_project(name, )
+
+def get_projects():
+    user_enable_projects = settings.get("enable_projects", [])
+    return {k: "" for k in user_enable_projects + always_enable_projects}.keys()
+
+
+
+# def deploy_capi_crds():
+#     # We only care about the Cluster CRD at present
+#     crd_yaml = local("curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/main/config/crd/bases/cluster.x-k8s.io_clusters.yaml", quiet=True)
+#     k8s_yaml(crd_yaml)
+
+def deploy_flux():
+    repo_owner = settings.get("repo_owner")
+    if repo_owner  == None:
+        fail("you must supply a repo owner in the tilt-settings")
+    git_token = settings.get("github_token")
+    if git_token  == None:
+        fail("you must supply a GitHub token via the GITHUB_TOKEN environment variable or in your tilt settings")
+
+    repo_name = "fleeet-demo"
+    if settings.get("repo_name"):
+        repo_name = settings.get("repo_name")
+
+    flux_bootstrap(repo_owner, repo_name, "./mgmt", git_token)
+
+def register_tenant_cluster():
+    files = listdir("./.tiltbuild/")
+    tenant_num=0
+    for file in files:
+        if file.endswith(".kubeconfig"):
+            tenant_name = "tenant-{}".format(tenant_num)
+            secret = capi_create_kubeconfig_secret(tenant_name, "default", from_file=file)
+            k8s_yaml(secret)
+            cluster_yaml = capi_create_cluster_yaml(tenant_name, "default")
+            k8s_yaml(blob(cluster_yaml))
+            tenant_num = tenant_num+1
+
+##############################
+# Actual work happens here
+##############################
+
+include_user_tilt_files()
+
+capi_deploycrds()
+
+deploy_flux()
+
+enable_projects()
+
+register_tenant_cluster()

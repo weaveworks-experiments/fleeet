@@ -1,0 +1,9 @@
+{
+    "repo_owner": "richardcase",
+    "debug": {
+        "assemblage": {
+            "continue": true,
+            "port": 30000
+        }
+    }
+}

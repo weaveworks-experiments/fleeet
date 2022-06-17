@@ -1,0 +1,62 @@
+# -*- mode: Python -*-
+
+load('ext://secret', 'secret_from_dict')
+
+def capi_deploycrds(quiet=True):
+    """Deploys the Cluster API Core CRDs
+
+    Args:
+        quiet: If set to true you won't see the output of the curl command 
+    
+    """
+    crd_yaml = local("curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/cluster-api/main/config/crd/bases/cluster.x-k8s.io_clusters.yaml", quiet=quiet)
+    k8s_yaml(crd_yaml)
+
+def capi_create_kubeconfig_secret(name, namespace, from_file=None, from_blob=None):
+    """Create a CAPI kubeconfig secret
+
+    Args:
+        name: The cluster name
+        namespace: The namespace of the cluster
+        from_file (optional): the path to a file containing the kubeconfig
+        from_blob (optional): the kubeconfig as a blob string
+
+    Returns:
+        The kubeconfig secret YAML 
+    """
+    if not from_file and not from_blob:
+        fail("you must supply a kubeconfig file or blob")
+    if from_file:
+        from_blob = read_file(from_file)
+    encoded = local("base64", stdin=from_blob, echo_off=True,quiet=True)
+
+    items = {
+        "value": encoded
+    }
+
+    secret_name="{cluster_name}-kubeconfig".format(cluster_name=name)
+
+    return secret_from_dict(secret_name, namespace, items)
+
+
+def capi_create_cluster_yaml(name, namespace):
+    """Create a CAPI Cluster definition
+
+    Args:
+        name: The cluster name
+        namespace: The namespace of the cluster
+
+    Returns:
+        The CAPI cluster YAML 
+    """
+    cluster_yaml = cluster_tenant_template.format(cluster_name=name, cluster_namespace=namespace)
+    return cluster_yaml
+
+
+cluster_tenant_template = """
+apiVersion: cluster.x-k8s.io/v1alpha3
+kind: Cluster
+metadata:
+  name: "{cluster_name}"
+  namespace: "{cluster_namespace}"
+"""
