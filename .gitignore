@@ -20,3 +20,5 @@ tilt-settings.json
 tilt-settings.yaml
 tilt_modules
 .tiltbuild
+
+mgmt.kubeconfig

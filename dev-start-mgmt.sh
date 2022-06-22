@@ -3,6 +3,7 @@
 set -e
 set -o pipefail
 
-kind create cluster --name fleeet-mgmt
+kind create cluster --name fleeet-mgmt --config kind.yaml
+kind get kubeconfig --name fleeet-mgmt > mgmt.kubeconfig
 
-tilt --file Tiltfile-mgmt --host 0.0.0.0 -v up
+tilt --file Tiltfile-mgmt  -v up

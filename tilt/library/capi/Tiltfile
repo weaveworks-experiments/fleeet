@@ -28,10 +28,9 @@ def capi_create_kubeconfig_secret(name, namespace, from_file=None, from_blob=Non
         fail("you must supply a kubeconfig file or blob")
     if from_file:
         from_blob = read_file(from_file)
-    encoded = local("base64", stdin=from_blob, echo_off=True,quiet=True)
 
     items = {
-        "value": encoded
+         "value": from_blob
     }
 
     secret_name="{cluster_name}-kubeconfig".format(cluster_name=name)

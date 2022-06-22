@@ -14,6 +14,8 @@ func KustomizationSpecFromPackage(pkg *PackageSpec, sourceName string, mapping f
 		Name: sourceName,
 	}
 	spec.Path = pkg.Kustomize.Path
+	//TODO: make this overideable
+	spec.TargetNamespace = "default"
 
 	if subSpec := pkg.Kustomize.Substitute; subSpec != nil {
 		substitutions := map[string]string{}
