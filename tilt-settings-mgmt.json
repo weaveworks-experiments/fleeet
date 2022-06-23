@@ -1,0 +1,9 @@
+{
+    "repo_owner": "richardcase",
+    "debug": {
+        "module": {
+            "continue": true,
+            "port": 30001
+        }
+    }
+}

@@ -1,0 +1,99 @@
+# -*- mode: Python -*-
+
+v1alpha1.extension_repo(name='ww-ext', url='https://github.com/weaveworks-experiments/tilt-extensions')
+v1alpha1.extension(name='flux', repo_name='ww-ext', repo_path='flux')
+v1alpha1.extension(name='project', repo_name='ww-ext', repo_path='project')
+v1alpha1.extension(name='io', repo_name='ww-ext', repo_path='io')
+v1alpha1.extension(name='capi', repo_name='ww-ext', repo_path='capi')
+
+load("ext://project", "project_enable")
+load("ext://flux", "flux_bootstrap")
+load("ext://io", "info", "warn")
+
+
+# set defaults
+version_settings(True, ">=0.22.2")
+
+settings = {
+    "deploy_capi_crds": True,
+    "kind_cluster_name": os.getenv("KIND_CLUSTER_NAME", "fleeet-tenant"),
+    "github_token": os.getenv("GITHUB_TOKEN", ""),
+    "debug": {},
+}
+
+# global settings
+tilt_file = "./tilt-settings-tenant.yaml" if os.path.exists("./tilt-settings-tenant.yaml") else "./tilt-settings-tenant.json"
+settings.update(read_yaml(
+    tilt_file,
+    default = {},
+))
+
+k8s_ctx = "kind-" + settings.get("kind_cluster_name")
+info("allowed k8s context={ctx}".format(ctx = k8s_ctx))
+allow_k8s_contexts(k8s_ctx)
+
+os.putenv("KIND_CLUSTER_NAME", settings.get("kind_cluster_name"))
+
+#os_name = str(local("go env GOOS")).rstrip("\n")
+#os_arch = str(local("go env GOARCH")).rstrip("\n")
+
+always_enable_projects = ["assemblage"]
+
+projects = {
+    "assemblage": {
+        "context": "assemblage",
+        "image": "squaremo/fleeet-assemblage",
+        "live_reload_deps": [
+            "main.go",
+            "go.mod",
+            "go.sum",
+            "../pkg",
+            "api",
+            "controllers"
+        ],
+        "kustomize_dir": "config/default",
+        "label": "assemblage"
+    },
+}
+
+# Users may define their own Tilt customizations in tilt.d. This directory is excluded from git and these files will
+# not be checked in to version control.
+def include_user_tilt_files():
+    user_tiltfiles = listdir("tilt.d")
+    for f in user_tiltfiles:
+        include(f)
+
+def enable_projects():
+    for name in get_projects():
+        p = projects.get(name)
+        project_enable(name, p, settings.get("debug").get(name, {}))
+
+def get_projects():
+    user_enable_projects = settings.get("enable_projects", [])
+    return {k: "" for k in user_enable_projects + always_enable_projects}.keys()
+
+def deploy_flux():
+    repo_owner = settings.get("repo_owner")
+    if repo_owner  == None:
+        fail("you must supply a repo owner in the tilt-settings")
+    git_token = settings.get("github_token")
+    if git_token  == None:
+        fail("you must supply a GitHub token via the GITHUB_TOKEN environment variable or in your tilt settings")
+
+    repo_name = "fleeet-demo"
+    if settings.get("repo_name"):
+        repo_name = settings.get("repo_name")
+
+    flux_bootstrap(repo_owner, repo_name, "./tenant", git_token)
+
+
+##############################
+# Actual work happens here
+##############################
+
+include_user_tilt_files()
+
+deploy_flux()
+
+enable_projects()
+

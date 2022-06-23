@@ -13,3 +13,12 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+
+# User-supplied Tiltfile extensions, settings, and builds
+tilt.d
+tilt-settings.json
+tilt-settings.yaml
+tilt_modules
+.tiltbuild
+
+mgmt.kubeconfig
