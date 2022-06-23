@@ -1,12 +1,15 @@
 # -*- mode: Python -*-
 
-load("./tilt/library/project/Tiltfile", "project_enable")
-load("./tilt/library/flux/Tiltfile", "flux_bootstrap")
-load("./tilt/library/io/Tiltfile", "info", "warn")
+v1alpha1.extension_repo(name='ww-ext', url='https://github.com/weaveworks-experiments/tilt-extensions')
+v1alpha1.extension(name='flux', repo_name='ww-ext', repo_path='flux')
+v1alpha1.extension(name='project', repo_name='ww-ext', repo_path='project')
+v1alpha1.extension(name='io', repo_name='ww-ext', repo_path='io')
+v1alpha1.extension(name='capi', repo_name='ww-ext', repo_path='capi')
 
+load("ext://project", "project_enable")
+load("ext://flux", "flux_bootstrap")
+load("ext://io", "info", "warn")
 
-load("ext://uibutton", "cmd_button", "text_input")
-load('ext://secret', 'secret_yaml_generic')
 
 # set defaults
 version_settings(True, ">=0.22.2")
